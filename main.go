@@ -245,18 +245,18 @@ func main() {
 
 					for _, name := range group {
 						count := p.Known[name]
-						fmt.Printf("%s | %s | %d\n", name.Type, name.Name, count)
+						fmt.Fprintf(w, "%s | %s | %d\n", name.Type, name.Name, count)
 						total += count
 					}
 
-					fmt.Printf("%d\n", total)
-					fmt.Println()
+					fmt.Fprintf(w, "%d\n", total)
+					fmt.Fprintln(w)
 
 					completeOutput += fmt.Sprintf("%d. %s - польотів: %d, ОПДК не виявлено;\n", i+1, group[0].Name, total)
 				}
 
 				for k, v := range p.Unknown {
-					fmt.Printf("%s | %s | %s | %d\n", "інше", k.Name, k.Hint, v)
+					fmt.Fprintf(w, "%s | %s | %s | %d\n", "інше", k.Name, k.Hint, v)
 				}
 
 				w.Write([]byte(completeOutput))
