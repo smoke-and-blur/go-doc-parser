@@ -225,6 +225,10 @@ func main() {
 			func(w http.ResponseWriter, r *http.Request) {
 				r.ParseMultipartForm(64_000_000)
 
+				if r.MultipartForm == nil {
+					return
+				}
+
 				for name, headers := range r.MultipartForm.File {
 					filterEarly := name == "filtered_files"
 
