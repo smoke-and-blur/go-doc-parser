@@ -202,8 +202,13 @@ func main() {
 		return
 	}
 
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "4000"
+	}
+
 	http.ListenAndServe(
-		":8080",
+		"0.0.0.0:"+port,
 		http.HandlerFunc(
 			func(w http.ResponseWriter, r *http.Request) {
 				file, header, err := r.FormFile("in")
