@@ -168,7 +168,12 @@ func ParseTable(table *docx.Table) (out []Record) {
 		}
 
 		item := row.TableCells[6].Paragraphs[0].String()
-		hint := row.TableCells[6].Paragraphs[1].String()
+
+		hint := ""
+
+		if len(row.TableCells[6].Paragraphs) > 1 {
+			hint = row.TableCells[6].Paragraphs[1].String()
+		}
 
 		p := Parser{
 			In: []rune(item),
@@ -257,6 +262,10 @@ func main() {
 
 				for k, v := range p.Unknown {
 					fmt.Fprintf(w, "%s | %s | %s | %d\n", "інше", k.Name, k.Hint, v)
+				}
+
+				if len(p.Unknown) > 1 {
+					fmt.Fprintln(w)
 				}
 
 				w.Write([]byte(completeOutput))
