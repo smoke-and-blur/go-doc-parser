@@ -1,0 +1,6 @@
+# github.com/fumiama/go-docx v0.0.0-20250506085032-0c30fd09304b
+## explicit; go 1.20
+github.com/fumiama/go-docx
+# github.com/fumiama/imgsz v0.0.2
+## explicit; go 1.17
+github.com/fumiama/imgsz
