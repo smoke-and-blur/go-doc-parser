@@ -3,6 +3,8 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
+	"mime/multipart"
 	"net/http"
 	"os"
 	"strconv"
@@ -19,7 +21,7 @@ type ID struct {
 type Record struct {
 	// N
 	// Problem
-	EndTime uint64
+	EndHour uint64
 	ID
 }
 
@@ -128,10 +130,13 @@ func (p *Parser) ParseName() QualifiedName {
 	return QualifiedName{t, string(name)}
 }
 
-func (p Processor) Process(records []Record) {
+func (p Processor) Process(records []Record, filterEarly bool) {
 	for _, record := range records {
 		// filter records happened after 18:00???
-		// if record.EndTime >
+		if filterEarly && record.EndHour < 18 {
+			continue
+		}
+
 		count, ok := p.Known[record.QualifiedName]
 		if !ok {
 			count := p.Unknown[record.ID]
@@ -182,7 +187,7 @@ func ParseTable(table *docx.Table) (out []Record) {
 		q := p.ParseName()
 
 		record := Record{
-			EndTime: end,
+			EndHour: end,
 			ID: ID{
 				q,
 				hint,
@@ -212,64 +217,87 @@ func main() {
 		port = "4000"
 	}
 
+	process := NewProcessor(dictionary)
+
 	http.ListenAndServe(
 		"0.0.0.0:"+port,
 		http.HandlerFunc(
 			func(w http.ResponseWriter, r *http.Request) {
-				file, header, err := r.FormFile("in")
-				if err != nil {
-					w.WriteHeader(http.StatusInternalServerError)
-					return
-				}
+				r.ParseMultipartForm(64_000_000)
 
-				doc, err := docx.Parse(file, header.Size)
-				if err != nil {
-					panic(err)
-				}
+				for name, headers := range r.MultipartForm.File {
+					filterEarly := name == "filtered_files"
 
-				table := FindFirstTable(doc)
+					for _, header := range headers {
+						file, err := header.Open()
+						if err != nil {
+							fmt.Println("failed to open the file from header:", err)
+							w.WriteHeader(http.StatusInternalServerError)
+							return
+						}
+						defer file.Close()
 
-				records := ParseTable(table)
-				p := Processor{
-					Known:   map[QualifiedName]int{},
-					Unknown: map[ID]int{},
-				}
+						// TODO: consider making it in parallel and sorting back again?
 
-				for _, group := range dictionary {
-					for _, name := range group {
-						p.Known[name] = 0
+						process(w, file, header, filterEarly)
 					}
 				}
-
-				p.Process(records)
-
-				completeOutput := ``
-
-				for i, group := range dictionary {
-					total := 0
-
-					for _, name := range group {
-						count := p.Known[name]
-						fmt.Fprintf(w, "%s | %s | %d\n", name.Type, name.Name, count)
-						total += count
-					}
-
-					fmt.Fprintf(w, "%d\n", total)
-					fmt.Fprintln(w)
-
-					completeOutput += fmt.Sprintf("%d. %s - польотів: %d, ОПДК не виявлено;\n", i+1, group[0].Name, total)
-				}
-
-				for k, v := range p.Unknown {
-					fmt.Fprintf(w, "%s | %s | %s | %d\n", "інше", k.Name, k.Hint, v)
-				}
-
-				if len(p.Unknown) > 1 {
-					fmt.Fprintln(w)
-				}
-
-				w.Write([]byte(completeOutput))
 			},
 		),
 	)
+}
+
+func NewProcessor(dictionary [][]QualifiedName) func(w io.Writer, file multipart.File, header *multipart.FileHeader, filterEarly bool) {
+	return func(w io.Writer, file multipart.File, header *multipart.FileHeader, filterEarly bool) {
+		doc, err := docx.Parse(file, header.Size)
+		if err != nil {
+			panic(err)
+			// TODO: ???
+		}
+
+		table := FindFirstTable(doc)
+
+		records := ParseTable(table)
+		p := Processor{
+			Known:   map[QualifiedName]int{},
+			Unknown: map[ID]int{},
+		}
+
+		for _, group := range dictionary {
+			for _, name := range group {
+				p.Known[name] = 0
+			}
+		}
+
+		p.Process(records, filterEarly)
+
+		fmt.Fprintf(w, "%s\n 18:00-00:00: %t\n\n", header.Filename, filterEarly)
+
+		completeOutput := ""
+
+		for i, group := range dictionary {
+			total := 0
+
+			for _, name := range group {
+				count := p.Known[name]
+				fmt.Fprintf(w, "%s | %s | %d\n", name.Type, name.Name, count)
+				total += count
+			}
+
+			fmt.Fprintf(w, "%d\n", total)
+			fmt.Fprintln(w)
+
+			completeOutput += fmt.Sprintf("%d. %s - польотів: %d, ОПДК не виявлено;\n", i+1, group[0].Name, total)
+		}
+
+		for k, v := range p.Unknown {
+			fmt.Fprintf(w, "%s | %s | %s | %d\n", "інше", k.Name, k.Hint, v)
+		}
+
+		if len(p.Unknown) > 0 {
+			fmt.Fprintf(w, "\n")
+		}
+
+		fmt.Fprintf(w, "%s\n...\n\n", completeOutput)
+	}
 }
