@@ -288,9 +288,7 @@ func NewProcessor(dictionary [][]QualifiedName) func(w io.Writer, descriptors []
 
 			fmt.Fprintf(w, "%s\n18:00-00:00: %t\n\n", descriptor.Header.Filename, descriptor.FitlerEarly)
 
-			completeOutput := ""
-
-			for i, group := range dictionary {
+			for _, group := range dictionary {
 				total := 0
 
 				for _, name := range group {
@@ -304,7 +302,6 @@ func NewProcessor(dictionary [][]QualifiedName) func(w io.Writer, descriptors []
 				fmt.Fprintf(w, "%d\n", total)
 				fmt.Fprintln(w)
 
-				completeOutput += fmt.Sprintf("%d. %s - польотів: %d, ОПДК не виявлено;\n", i+1, group[0].Name, total)
 			}
 
 			for k, count := range p.Unknown {
@@ -316,17 +313,20 @@ func NewProcessor(dictionary [][]QualifiedName) func(w io.Writer, descriptors []
 				fmt.Fprintf(w, "\n")
 			}
 
-			fmt.Fprintf(w, "%s\n...\n\n", completeOutput)
 		}
 
 		fmt.Fprintf(w, "...\n\nTOTAL\n\n")
 
-		for _, group := range dictionary {
+		completeOutput := ""
+
+		for i, group := range dictionary {
 			name := group[0]
 			id := ID{name, ""}
 			total := overall[id]
 
 			delete(overall, id)
+
+			completeOutput += fmt.Sprintf("%d. %s - польотів: %d, ОПДК не виявлено;\n", i+1, group[0].Name, total)
 
 			fmt.Fprintf(w, "%s | %s | %d\n", name.Type, name.Name, total)
 		}
@@ -336,5 +336,12 @@ func NewProcessor(dictionary [][]QualifiedName) func(w io.Writer, descriptors []
 		for id, total := range overall {
 			fmt.Fprintf(w, "%s | %s | %s | %d\n", "інше", id.Name, id.Hint, total)
 		}
+
+		if len(overall) > 0 {
+			fmt.Fprintln(w)
+		}
+
+		fmt.Fprintf(w, "%s", completeOutput)
+
 	}
 }
