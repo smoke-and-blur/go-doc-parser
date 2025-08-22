@@ -266,6 +266,8 @@ func main() {
 					}
 				}
 
+				fmt.Fprintf(w, "<style>table * { border: 1px solid #888; }\ntable { border-collapse: collapse; border-spacing: 0; width: 100%%; }\nth{ background: #eee; }</style>")
+
 				process(w, descriptors)
 			},
 		),
@@ -314,14 +316,15 @@ func NewProcessor(dictionary [][]QualifiedName) func(w io.Writer, descriptors []
 
 			p.Process(records, descriptor.FitlerEarly)
 
-			fmt.Fprintf(w, "%s\n18:00-00:00: %t\n\n", descriptor.Header.Filename, descriptor.FitlerEarly)
+			fmt.Fprintf(w, "<pre>%s\n18:00-00:00: %t\n</pre>", descriptor.Header.Filename, descriptor.FitlerEarly)
 
 			for _, group := range dictionary {
 				total := 0
 
+				fmt.Fprintf(w, "<table><tr><th style=\"width:5%%\">Тип</th><th style=\"width:100%%\">Назва</th><th style=\"width:auto\">Кількість</th></tr>")
 				for _, name := range group {
 					count := p.Known[name]
-					fmt.Fprintf(w, "%s | %s | %d\n", name.Type, name.Name, count)
+					fmt.Fprintf(w, "<tr><td>%s</td><td>%s</td><td>%d</td></tr>", name.Type, name.Name, count)
 					total += count
 
 					comment := p.Commented[ID{name, ""}]
@@ -333,25 +336,24 @@ func NewProcessor(dictionary [][]QualifiedName) func(w io.Writer, descriptors []
 
 				overall[ID{group[0], ""}] += total
 
-				fmt.Fprintf(w, "%d\n", total)
-				fmt.Fprintln(w)
-
+				fmt.Fprintf(w, "<tr><td colspan=2>Всього</td><td>%d</td></tr>", total)
+				fmt.Fprintf(w, "</table><br>")
 			}
 
+			fmt.Fprintf(w, "<table><tr><th style=\"width:5%%\">Тип</th><th style=\"width:50%%\">Назва</th><th style=\"width:50%%\">Примітка</th><th style=\"width:auto\">Кількість</th></tr>")
 			for k, count := range p.Unknown {
-				fmt.Fprintf(w, "%s | %s | %s | %d\n", "інше", k.Name, k.Hint, count)
+				fmt.Fprintf(w, "<tr><td>%s</td><td>%s</td><td>%s</td><td>%d</td></tr>", "інше", k.Name, k.Hint, count)
 				overall[k] += count
 			}
 
-			if len(p.Unknown) > 0 {
-				fmt.Fprintf(w, "\n")
-			}
-
+			fmt.Fprintf(w, "</table><br>")
 		}
 
-		fmt.Fprintf(w, "...\n\nTOTAL\n\n")
+		fmt.Fprintf(w, "<center><h3>TOTAL</h3></center><br>")
 
-		completeOutput := ""
+		summary := ""
+
+		fmt.Fprintf(w, "<table><tr><th style=\"width:5%%\">Тип</th><th style=\"width:100%%\">Назва</th><th style=\"width:width:auto\">Кількість</th></tr>")
 
 		for i, group := range dictionary {
 			name := group[0]
@@ -368,29 +370,42 @@ func NewProcessor(dictionary [][]QualifiedName) func(w io.Writer, descriptors []
 				comment = fmt.Sprintf("в %d випадках M затриманих", times)
 			}
 
-			completeOutput += fmt.Sprintf("%d. %s - польотів: %d, %s;\n", i+1, group[0].Name, total, comment)
+			summary += fmt.Sprintf("%d. %s - польотів: %d, %s;\n", i+1, group[0].Name, total, comment)
 
-			fmt.Fprintf(w, "%s | %s | %d\n", name.Type, name.Name, total)
+			fmt.Fprintf(w, "<tr><td>%s</td><td>%s</td><td>%d</td></tr>", name.Type, name.Name, total)
 		}
 
-		fmt.Fprintln(w)
+		fmt.Fprintf(w, "</table><br>")
+
+		fmt.Fprintf(w, "<div id=\"copy\">")
+
+		fmt.Fprintf(w, "<table><tr><th style=\"width:5%%\">Тип</th><th style=\"width:50%%\">Назва</th><th style=\"width:50%%\">Примітка</th><th style=\"width:auto\">Кількість</td></tr>")
 
 		for id, total := range overall {
-			fmt.Fprintf(w, "%s | %s | %s | %d\n", "інше", id.Name, id.Hint, total)
+			t := id.Type
+			if len(t) < 1 {
+				t = "інше"
+			}
+
+			fmt.Fprintf(w, "<tr><td>%s</td><td>%s</td><td>%s</td><td>%d</td></tr>", t, id.Name, id.Hint, total)
 		}
+
+		fmt.Fprintf(w, "</table><br>")
 
 		if len(overall) > 0 {
 			fmt.Fprintln(w)
 		}
 
 		for key, comments := range overallComments {
-			fmt.Fprintf(w, "%s | %s | %s\n", key.Type, key.Name, key.Hint)
+			fmt.Fprintf(w, "<table><tr><th style=\"width:5%%\">%s - %s - %s</th></tr>", key.Type, key.Name, key.Hint)
 			for _, comment := range comments {
-				fmt.Fprintf(w, "%s\n", comment)
+				fmt.Fprintf(w, "<tr><td colspan=3>%s</td></tr>", comment)
 			}
-			fmt.Fprintln(w)
+			fmt.Fprintf(w, "</table><br>")
 		}
 
-		fmt.Fprintf(w, "%s", completeOutput)
+		fmt.Fprintf(w, "<pre>%s</pre>", summary)
+
+		fmt.Fprintf(w, "</div>")
 	}
 }
