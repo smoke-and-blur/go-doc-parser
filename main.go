@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"unicode"
 
 	"github.com/fumiama/go-docx"
@@ -21,13 +22,15 @@ type ID struct {
 type Record struct {
 	// N
 	// Problem
-	EndHour uint64
 	ID
+	EndHour uint64
+	Comment string
 }
 
 type Processor struct {
-	Known   map[QualifiedName]int
-	Unknown map[ID]int
+	Known     map[QualifiedName]int
+	Unknown   map[ID]int
+	Commented map[ID]string
 }
 
 type QualifiedName struct {
@@ -141,7 +144,13 @@ func (p Processor) Process(records []Record, filterEarly bool) {
 		if !ok {
 			count := p.Unknown[record.ID]
 			p.Unknown[record.ID] = count + 1
+			p.Commented[record.ID] = record.Comment
 			continue
+		}
+
+		if len(record.Comment) > 0 {
+			id := ID{record.QualifiedName, ""}
+			p.Commented[id] = record.Comment
 		}
 
 		p.Known[record.QualifiedName] = count + 1
@@ -186,12 +195,28 @@ func ParseTable(table *docx.Table) (out []Record) {
 
 		q := p.ParseName()
 
+		paragraphs := []string{}
+		for _, p := range row.TableCells[8].Paragraphs {
+			p := p.String()
+
+			p = strings.Join(strings.Fields(p), " ")
+
+			if p == "ОПДК не виявлено" {
+				continue
+			}
+
+			if len(p) > 0 {
+				paragraphs = append(paragraphs, p)
+			}
+		}
+
 		record := Record{
-			EndHour: end,
 			ID: ID{
 				q,
 				hint,
 			},
+			EndHour: end,
+			Comment: strings.Join(paragraphs, "\n"),
 		}
 
 		out = append(out, record)
@@ -256,6 +281,7 @@ func NewProcessor(dictionary [][]QualifiedName) func(w io.Writer, descriptors []
 	return func(w io.Writer, descriptors []Descriptor) {
 
 		overall := map[ID]int{}
+		overallComments := map[ID][]string{}
 
 		for _, descriptor := range descriptors {
 			file, err := descriptor.Header.Open()
@@ -273,9 +299,11 @@ func NewProcessor(dictionary [][]QualifiedName) func(w io.Writer, descriptors []
 			table := FindFirstTable(doc)
 
 			records := ParseTable(table)
+
 			p := Processor{
-				Known:   map[QualifiedName]int{},
-				Unknown: map[ID]int{},
+				Known:     map[QualifiedName]int{},
+				Unknown:   map[ID]int{},
+				Commented: map[ID]string{},
 			}
 
 			for _, group := range dictionary {
@@ -295,6 +323,12 @@ func NewProcessor(dictionary [][]QualifiedName) func(w io.Writer, descriptors []
 					count := p.Known[name]
 					fmt.Fprintf(w, "%s | %s | %d\n", name.Type, name.Name, count)
 					total += count
+
+					comment := p.Commented[ID{name, ""}]
+					if len(comment) > 0 {
+						id := ID{group[0], ""}
+						overallComments[id] = append(overallComments[id], comment)
+					}
 				}
 
 				overall[ID{group[0], ""}] += total
@@ -326,7 +360,15 @@ func NewProcessor(dictionary [][]QualifiedName) func(w io.Writer, descriptors []
 
 			delete(overall, id)
 
-			completeOutput += fmt.Sprintf("%d. %s - польотів: %d, ОПДК не виявлено;\n", i+1, group[0].Name, total)
+			comment := "ОПДК не виявлено"
+
+			times := len(overallComments[id])
+
+			if times > 0 {
+				comment = fmt.Sprintf("в %d випадках M затриманих", times)
+			}
+
+			completeOutput += fmt.Sprintf("%d. %s - польотів: %d, %s;\n", i+1, group[0].Name, total, comment)
 
 			fmt.Fprintf(w, "%s | %s | %d\n", name.Type, name.Name, total)
 		}
@@ -341,7 +383,14 @@ func NewProcessor(dictionary [][]QualifiedName) func(w io.Writer, descriptors []
 			fmt.Fprintln(w)
 		}
 
-		fmt.Fprintf(w, "%s", completeOutput)
+		for key, comments := range overallComments {
+			fmt.Fprintf(w, "%s | %s | %s\n", key.Type, key.Name, key.Hint)
+			for _, comment := range comments {
+				fmt.Fprintf(w, "%s\n", comment)
+			}
+			fmt.Fprintln(w)
+		}
 
+		fmt.Fprintf(w, "%s", completeOutput)
 	}
 }
