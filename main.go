@@ -256,6 +256,8 @@ func main() {
 
 				descriptors := []Descriptor{}
 
+				w.Header().Add("Content-Type", "text/html")
+
 				// TODO: consider making it in parallel and sorting back again?
 
 				for name, headers := range r.MultipartForm.File {
