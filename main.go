@@ -229,79 +229,112 @@ func main() {
 					return
 				}
 
+				descriptors := []Descriptor{}
+
+				// TODO: consider making it in parallel and sorting back again?
+
 				for name, headers := range r.MultipartForm.File {
 					filterEarly := name == "filtered_files"
 
 					for _, header := range headers {
-						file, err := header.Open()
-						if err != nil {
-							fmt.Println("failed to open the file from header:", err)
-							w.WriteHeader(http.StatusInternalServerError)
-							return
-						}
-						defer file.Close()
-
-						// TODO: consider making it in parallel and sorting back again?
-
-						process(w, file, header, filterEarly)
+						descriptors = append(descriptors, Descriptor{header, filterEarly})
 					}
 				}
+
+				process(w, descriptors)
 			},
 		),
 	)
 }
 
-func NewProcessor(dictionary [][]QualifiedName) func(w io.Writer, file multipart.File, header *multipart.FileHeader, filterEarly bool) {
-	return func(w io.Writer, file multipart.File, header *multipart.FileHeader, filterEarly bool) {
-		doc, err := docx.Parse(file, header.Size)
-		if err != nil {
-			panic(err)
-			// TODO: ???
+type Descriptor struct {
+	Header      *multipart.FileHeader
+	FitlerEarly bool
+}
+
+func NewProcessor(dictionary [][]QualifiedName) func(w io.Writer, descriptors []Descriptor) {
+	return func(w io.Writer, descriptors []Descriptor) {
+
+		overall := map[ID]int{}
+
+		for _, descriptor := range descriptors {
+			file, err := descriptor.Header.Open()
+			if err != nil {
+				return //
+			}
+			defer file.Close()
+
+			doc, err := docx.Parse(file, descriptor.Header.Size)
+			if err != nil {
+				panic(err)
+				// TODO: ???
+			}
+
+			table := FindFirstTable(doc)
+
+			records := ParseTable(table)
+			p := Processor{
+				Known:   map[QualifiedName]int{},
+				Unknown: map[ID]int{},
+			}
+
+			for _, group := range dictionary {
+				for _, name := range group {
+					p.Known[name] = 0
+				}
+			}
+
+			p.Process(records, descriptor.FitlerEarly)
+
+			fmt.Fprintf(w, "%s\n18:00-00:00: %t\n\n", descriptor.Header.Filename, descriptor.FitlerEarly)
+
+			completeOutput := ""
+
+			for i, group := range dictionary {
+				total := 0
+
+				for _, name := range group {
+					count := p.Known[name]
+					fmt.Fprintf(w, "%s | %s | %d\n", name.Type, name.Name, count)
+					total += count
+				}
+
+				overall[ID{group[0], ""}] += total
+
+				fmt.Fprintf(w, "%d\n", total)
+				fmt.Fprintln(w)
+
+				completeOutput += fmt.Sprintf("%d. %s - польотів: %d, ОПДК не виявлено;\n", i+1, group[0].Name, total)
+			}
+
+			for k, count := range p.Unknown {
+				fmt.Fprintf(w, "%s | %s | %s | %d\n", "інше", k.Name, k.Hint, count)
+				overall[k] += count
+			}
+
+			if len(p.Unknown) > 0 {
+				fmt.Fprintf(w, "\n")
+			}
+
+			fmt.Fprintf(w, "%s\n...\n\n", completeOutput)
 		}
 
-		table := FindFirstTable(doc)
-
-		records := ParseTable(table)
-		p := Processor{
-			Known:   map[QualifiedName]int{},
-			Unknown: map[ID]int{},
-		}
+		fmt.Fprintf(w, "...\n\nTOTAL\n\n")
 
 		for _, group := range dictionary {
-			for _, name := range group {
-				p.Known[name] = 0
-			}
+			name := group[0]
+			id := ID{name, ""}
+			total := overall[id]
+
+			delete(overall, id)
+
+			fmt.Fprintf(w, "%s | %s | %d\n", name.Type, name.Name, total)
 		}
 
-		p.Process(records, filterEarly)
+		fmt.Fprintln(w)
 
-		fmt.Fprintf(w, "%s\n 18:00-00:00: %t\n\n", header.Filename, filterEarly)
-
-		completeOutput := ""
-
-		for i, group := range dictionary {
-			total := 0
-
-			for _, name := range group {
-				count := p.Known[name]
-				fmt.Fprintf(w, "%s | %s | %d\n", name.Type, name.Name, count)
-				total += count
-			}
-
-			fmt.Fprintf(w, "%d\n", total)
-			fmt.Fprintln(w)
-
-			completeOutput += fmt.Sprintf("%d. %s - польотів: %d, ОПДК не виявлено;\n", i+1, group[0].Name, total)
+		for id, total := range overall {
+			fmt.Fprintf(w, "%s | %s | %s | %d\n", "інше", id.Name, id.Hint, total)
 		}
-
-		for k, v := range p.Unknown {
-			fmt.Fprintf(w, "%s | %s | %s | %d\n", "інше", k.Name, k.Hint, v)
-		}
-
-		if len(p.Unknown) > 0 {
-			fmt.Fprintf(w, "\n")
-		}
-
-		fmt.Fprintf(w, "%s\n...\n\n", completeOutput)
 	}
 }
