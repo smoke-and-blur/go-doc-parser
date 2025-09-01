@@ -315,6 +315,7 @@ type Auxiliary struct {
 }
 
 type Template struct {
+	Records      []Record
 	Pages        []Page
 	Total        []Entry
 	TotalUnknown []Entry
@@ -322,7 +323,27 @@ type Template struct {
 	Summary      string
 }
 
+func Plural(one, few, many string) func(n int) string {
+	return func(n int) string {
+		mod10 := n % 10
+		mod100 := n % 100
+
+		out := many
+
+		switch {
+		case mod10 == 1 && mod100 != 11:
+			out = one
+		case mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14):
+			out = few
+		}
+
+		return fmt.Sprintf("%d %s", n, out)
+	}
+}
+
 func NewProcessor(dictionary [][]QualifiedName) func(descriptors []Descriptor) (out Template) {
+	cases := Plural("випадку", "випадках", "випадках")
+
 	return func(descriptors []Descriptor) (out Template) {
 
 		overall := map[ID]int{}
@@ -420,7 +441,7 @@ func NewProcessor(dictionary [][]QualifiedName) func(descriptors []Descriptor) (
 			times := len(overallComments[id])
 
 			if times > 0 {
-				comment = fmt.Sprintf("в %d випадках M затриманих", times)
+				comment = fmt.Sprintf("в %s M затриманих", cases(times))
 			}
 
 			summary += fmt.Sprintf("%d. %s - польотів: %d, %s;\n", i+1, group[0].Name, total, comment)
