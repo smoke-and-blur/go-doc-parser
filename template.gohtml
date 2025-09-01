@@ -141,6 +141,6 @@
 
 {{end}}
 
-<pre>
-{{ .Summary }}
-</pre>
+<pre id="summary">{{ .Summary }}</pre>
+<button onclick="navigator.clipboard.writeText(document.getElementById('summary').innerText); alert('Скопійовано!')">Cкопіювати</button>
+<button onclick="navigator.share({text: document.getElementById('summary').innerText})">Поділитися</button>
