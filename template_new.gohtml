@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+
+<script type="text/javascript"
+    src="https://cdn.jsdelivr.net/gh/vanjs-org/van/public/van-1.5.5.nomodule.min.js"></script>
+
+<style>
+    table * {
+        border: 1px solid #888;
+    }
+
+    table,
+    td {
+        width: 100%;
+    }
+
+    table {
+        border-collapse: collapse;
+        border-spacing: 0;
+    }
+
+    th {
+        background: #eee;
+    }
+
+    * {
+        font-size: 16px;
+        box-sizing: border-box;
+    }
+
+    .divider {
+        padding: 3px;
+        grid-column: span 4;
+        border-radius: 6px;
+        background: #eee;
+        text-align: center;
+        color: #666;
+        font-weight: bold;
+    }
+
+    #container {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        max-width: 720px;
+        align-items: center;
+        justify-content: center;
+        padding: 16px;
+    }
+
+    #container>* {
+        width: 100%;
+    }
+
+    body {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .number {
+        justify-self: end;
+    }
+
+    .header {
+        font-weight: bold;
+        font-size: 18px;
+        text-wrap: wrap;
+        max-width: 24ch;
+        overflow-wrap: anywhere;
+        text-align: center;
+    }
+
+    .options {
+        display: flex;
+        flex-direction: row;
+        gap: 16px;
+        justify-content: center;
+        width: 100%;
+    }
+
+    button {
+        border-radius: 6px;
+        border: 1px solid #eee;
+        background: none;
+        padding: 6px;
+    }
+
+    button:hover {
+        cursor: pointer;
+        background: #eee;
+    }
+
+    .table {
+        display: grid;
+        grid-template-columns: 1fr 5fr 5fr 1fr;
+        gap: 6px;
+        border: 1px solid #eee;
+        border-radius: 12px;
+        padding: 6px;
+    }
+</style>
+
+<script>
+    const { p, div, pre, button, textarea, img } = van.tags
+    const add = van.add
+
+    var data = {{.}}
+
+    document.addEventListener(
+        "DOMContentLoaded",
+        function () {
+            const container = document.getElementById('container')
+
+            add(
+                container,
+                img({ src: `https://upload.wikimedia.org/wikipedia/commons/8/8d/Emblem_of_the_State_Border_Guard_Service_of_Ukraine.svg`, style: `width: 36px; height: 36px` },),
+            )
+
+            renderData(container, data)
+        }
+    )
+
+    function renderEntries(entries, divider) {
+        var out = div({ class: `table` })
+
+        divider && add(out, div({ class: 'divider' }, divider))
+
+        for (entry of entries) {
+            const items = [
+                { value: entry.Type, span: 1 },
+                { value: entry.Name, span: 1 },
+                { value: entry.Hint, span: 1 },
+            ]
+
+            // calculate spans both directions for each column %)
+
+            // | a s=1 | b s=1 | c s=1 |
+            // | a s=1 | b s=2         |
+            // | b s=2         | c s=1 |
+            // |         b s=3         |
+
+            var last = -1
+            var span = 0
+
+            for (var i = 0; i < items.length + 1; i++) {
+                if (items[last] && items[last].value) {
+                    items[last].span += span
+                    span = 0
+                }
+
+                if (items[i] && items[i].value) {
+                    last = i
+                    continue
+                }
+
+                // only count spans if there is an empty cell
+
+                span++
+            }
+
+            for (item of items) {
+                item.value && add(out, div({ style: `grid-column: span ${item.span};` }, item.value))
+            }
+
+            add(out, div({ class: `number` }, entry.Count))
+        }
+
+        return out
+    }
+
+    function renderGroups(groups) {
+        var out = []
+
+        for (group of groups) {
+            out.push(
+                add(
+                    renderEntries(group.Entries, group.Entries[0].Name),
+                    div({ class: `number`, style: `grid-column: span 4; font-weight:bold` }, group.Total),
+                )
+            )
+        }
+
+        return out
+    }
+
+    function renderPages(pages) {
+        var out = []
+        for ([index, page] of pages.entries()) {
+            out.push(
+                div({ class: "header" }, page.Filename),
+                renderGroups(page.KnownGroups),
+                renderEntries(page.UnknownEntries, "Невідомі"),
+            )
+        }
+        return out
+    }
+
+
+    function renderData(container, data) {
+        add(
+            container,
+            renderPages(data.Pages),
+            div({ class: "header" }, "Підсумок"),
+            renderEntries(data.TotalUnknown, "Невідомі за всі документи"),
+            renderEntries(data.Total, "Суми за всі документи"),
+            div({ class: `header` }, "Примітки")
+        )
+
+        for (footnote of data.Footnotes) {
+            var t = div(
+                { class: `table` },
+                div({ class: `divider` }, [footnote.Type, footnote.Name, footnote.Hint].filter(Boolean).join(" ")),
+            )
+            for (comment of footnote.Comments) {
+                add(
+                    t,
+                    div({ style: `grid-column: span 4;` }, comment)
+                )
+            }
+            add(container, t)
+        }
+
+        add(
+            container,
+            textarea(
+                {
+                    id: `summary`,
+                    rows: 12,
+                    value: data.Summary,
+                    style: `border-radius: 12px; border: 1px solid #eee; padding: 6px;`,
+                },
+            ),
+            div(
+                { class: `options` },
+                button({ onclick: () => { navigator.clipboard.writeText(document.getElementById('summary').value); alert('Скопійовано!') } }, "Скопіювати"),
+                button({ onclick: () => { navigator.share({ text: document.getElementById('summary').value }) } }, "Поділитися"),
+            ),
+        )
+
+    }
+</script>
+
+<div id="container">
+
+</div>
