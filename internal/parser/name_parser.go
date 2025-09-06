@@ -55,6 +55,18 @@ func (p *NameParser) MatchChar(options ...string) string {
 		return string(out[0])
 	}
 
+	// longest := ""
+
+	// for _, option := range out {
+	// 	if len(option) > len(longest) {
+	// 		longest = string(option)
+	// 	}
+	// }
+
+	// p.Position += len(longest)
+
+	// return longest
+
 	return ""
 }
 
@@ -96,8 +108,8 @@ func (p *NameParser) trimQuotes() (out []rune) {
 }
 
 func (p *NameParser) ParseName() entity.QualifiedName {
-	t := p.MatchChar("віпс", "впс", "ГОРВ", "ПОРВ", "ВОПР та ПБПС") // "ГОРВ ВАЗ"
-	// t := p.MatchChar("віпс", "впс")
+	// t := p.MatchChar("віпс", "впс", "ГОРВ", "ПОРВ", "ВОПР та ПБПС", "ГОРВ ВАЗ") //
+	t := p.MatchChar("віпс", "впс")
 
 	// fmt.Printf("%s %d %c\n", t, p.Position, p.In[p.Position])
 

@@ -12,11 +12,11 @@ import (
 
 func Handler(process func([]*zip.File) entity.Data) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		for k, v := range r.Header {
-			for _, v := range v {
-				fmt.Println(k, v)
-			}
-		}
+		// for k, v := range r.Header {
+		// 	for _, v := range v {
+		// 		fmt.Println(k, v)
+		// 	}
+		// }
 
 		if r.Method != http.MethodPost {
 			return

@@ -8,7 +8,7 @@ import (
 	"github.com/fumiama/go-docx"
 )
 
-func ParseTable(table *docx.Table) (out []entity.Record) {
+func ParseTable(tag string, table *docx.Table) (out []entity.Record) {
 	for _, row := range table.TableRows[1:] {
 		endTime := row.TableCells[5].Paragraphs[0].String()
 		if len(endTime) < 2 {
@@ -21,12 +21,18 @@ func ParseTable(table *docx.Table) (out []entity.Record) {
 			continue
 		}
 
-		item := row.TableCells[6].Paragraphs[0].String()
+		parts := []string{}
+
+		for _, p := range row.TableCells[6].Paragraphs {
+			parts = append(parts, strings.Join(strings.Fields(p.String()), " "))
+		}
+
+		item := parts[0]
 
 		hint := ""
 
-		if len(row.TableCells[6].Paragraphs) > 1 {
-			hint = row.TableCells[6].Paragraphs[1].String()
+		if len(parts) > 1 {
+			hint = strings.Join(parts[1:], " ")
 		}
 
 		p := NameParser{
@@ -36,7 +42,9 @@ func ParseTable(table *docx.Table) (out []entity.Record) {
 		q := p.ParseName()
 
 		paragraphs := []string{}
+
 		for _, p := range row.TableCells[8].Paragraphs {
+
 			p := p.String()
 
 			p = strings.Join(strings.Fields(p), " ")
@@ -49,6 +57,10 @@ func ParseTable(table *docx.Table) (out []entity.Record) {
 				paragraphs = append(paragraphs, p)
 			}
 		}
+
+		// if len(paragraphs) < 1 {
+		// 	continue
+		// }
 
 		record := entity.Record{
 			ID: entity.ID{

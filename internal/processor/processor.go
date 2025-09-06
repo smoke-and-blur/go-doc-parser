@@ -35,12 +35,12 @@ func NewProcessor(dictionary [][]entity.QualifiedName) func(files []*zip.File) (
 			table := parser.FindFirstTable(doc)
 
 			// inject
-			records := parser.ParseTable(table)
+			records := parser.ParseTable(file.Name, table)
 
 			p := Processor{
 				Known:     map[entity.QualifiedName]int{},
 				Unknown:   map[entity.ID]int{},
-				Commented: map[entity.ID]string{},
+				Commented: map[entity.ID][]string{},
 			}
 
 			for _, group := range dictionary {
@@ -50,6 +50,14 @@ func NewProcessor(dictionary [][]entity.QualifiedName) func(files []*zip.File) (
 			}
 
 			p.Process(records)
+
+			for id, comments := range p.Commented {
+				for _, comment := range comments {
+					if len(comment) > 0 {
+						overallComments[id] = append(overallComments[id], comment)
+					}
+				}
+			}
 
 			page := entity.Page{
 				Filename: file.FileHeader.Name,
@@ -73,12 +81,6 @@ func NewProcessor(dictionary [][]entity.QualifiedName) func(files []*zip.File) (
 					)
 
 					total += count
-
-					comment := p.Commented[entity.ID{name, ""}]
-					if len(comment) > 0 {
-						id := entity.ID{group[0], ""}
-						overallComments[id] = append(overallComments[id], comment)
-					}
 				}
 
 				overall[entity.ID{group[0], ""}] += total
@@ -144,7 +146,7 @@ func NewProcessor(dictionary [][]entity.QualifiedName) func(files []*zip.File) (
 type Processor struct {
 	Known     map[entity.QualifiedName]int
 	Unknown   map[entity.ID]int
-	Commented map[entity.ID]string
+	Commented map[entity.ID][]string
 }
 
 func (p Processor) Process(records []entity.Record) {
@@ -158,13 +160,13 @@ func (p Processor) Process(records []entity.Record) {
 		if !ok {
 			count := p.Unknown[record.ID]
 			p.Unknown[record.ID] = count + 1
-			p.Commented[record.ID] = record.Comment
+			p.Commented[record.ID] = append(p.Commented[record.ID], record.Comment)
 			continue
 		}
 
 		if len(record.Comment) > 0 {
 			id := entity.ID{record.QualifiedName, ""}
-			p.Commented[id] = record.Comment
+			p.Commented[id] = append(p.Commented[id], record.Comment)
 		}
 
 		p.Known[record.QualifiedName] = count + 1
