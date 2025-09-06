@@ -61,7 +61,7 @@
     }
 
     .number {
-        justify-self: end;
+        text-align: right;
     }
 
     .header {
@@ -123,7 +123,32 @@
         }
     )
 
+    function calculateSpans(items) {
+        var last = -1
+        var span = 0
+
+        for (var i = 0; i < items.length + 1; i++) {
+            if (items[last] && items[last].value) {
+                items[last].span += span
+                span = 0
+            }
+
+            if (items[i] && items[i].value) {
+                last = i
+                continue
+            }
+
+            // only count spans if there is an empty cell
+            span++
+        }
+    }
+
     function renderEntries(entries, divider) {
+        if (!entries) {
+            console.log(entries, divider)
+            return
+        }
+
         var out = div({ class: `table` })
 
         divider && add(out, div({ class: 'divider' }, divider))
@@ -135,31 +160,7 @@
                 { value: entry.Hint, span: 1 },
             ]
 
-            // calculate spans both directions for each column %)
-
-            // | a s=1 | b s=1 | c s=1 |
-            // | a s=1 | b s=2         |
-            // | b s=2         | c s=1 |
-            // |         b s=3         |
-
-            var last = -1
-            var span = 0
-
-            for (var i = 0; i < items.length + 1; i++) {
-                if (items[last] && items[last].value) {
-                    items[last].span += span
-                    span = 0
-                }
-
-                if (items[i] && items[i].value) {
-                    last = i
-                    continue
-                }
-
-                // only count spans if there is an empty cell
-
-                span++
-            }
+            calculateSpans(items)
 
             for (item of items) {
                 item.value && add(out, div({ style: `grid-column: span ${item.span};` }, item.value))
