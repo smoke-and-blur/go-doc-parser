@@ -104,7 +104,7 @@
 </style>
 
 <script>
-    const { p, div, pre, button, textarea, img } = van.tags
+    const { p, div, pre, button, textarea, img, input } = van.tags
     const add = van.add
 
     var data = {{.}}
@@ -143,9 +143,9 @@
         }
     }
 
-    function renderEntries(entries, divider) {
-        if (!entries) {
-            console.log(entries, divider)
+    function renderGroups(groups, divider, cutoff, sum) {
+        if (!groups) {
+            console.log(groups, divider)
             return
         }
 
@@ -153,34 +153,43 @@
 
         divider && add(out, div({ class: 'divider' }, divider))
 
-        for (entry of entries) {
-            const items = [
-                { value: entry.Type, span: 1 },
-                { value: entry.Name, span: 1 },
-                { value: entry.Hint, span: 1 },
+        var total = 0
+
+        for (group of groups) {
+            const components = [
+                { value: group.Type, span: 1 },
+                { value: group.Name, span: 1 },
+                { value: group.Hint, span: 1 },
             ]
 
-            calculateSpans(items)
+            calculateSpans(components)
 
-            for (item of items) {
-                item.value && add(out, div({ style: `grid-column: span ${item.span};` }, item.value))
+            for (component of components) {
+                component.value && add(out, div({ style: `grid-column: span ${component.span};` }, component.value))
             }
 
-            add(out, div({ class: `number` }, entry.Count))
+            var length = group.Events
+
+            if (Array.isArray(group.Events)) {
+                length = group.Events.filter(afterCutoff(cutoff)).length
+            }
+
+            total += length
+
+            add(out, div({ class: `number` }, length))
         }
+
+        sum && add(out, div({ class: `number`, style: `grid-column: span 4; font-weight:bold` }, total))
 
         return out
     }
 
-    function renderGroups(groups) {
+    function renderSupergroups(supergroups, cutoff) {
         var out = []
 
-        for (group of groups) {
+        for (groups of supergroups) {
             out.push(
-                add(
-                    renderEntries(group.Entries, group.Entries[0].Name),
-                    div({ class: `number`, style: `grid-column: span 4; font-weight:bold` }, group.Total),
-                )
+                add(renderGroups(groups, groups[0].Name, cutoff, true))
             )
         }
 
@@ -189,43 +198,102 @@
 
     function renderPages(pages) {
         var out = []
-        for ([index, page] of pages.entries()) {
+        for (let page of pages) {
             out.push(
                 div({ class: "header" }, page.Filename),
-                renderGroups(page.KnownGroups),
-                renderEntries(page.UnknownEntries, "Невідомі"),
+                input({type: "number", onchange: (e)=>page.cutoff=e.target.valueAsNumber, value: page.cutoff}),
+                renderSupergroups(page.SelectedSupergroups, page.cutoff), // "Відомі"
+                renderGroups(page.OtherGroups, "Інші", page.cutoff),
             )
         }
         return out
     }
 
+    function aggregateSelected(data) {
+        var aggregate = new Map()
+
+        for (page of data.Pages) {
+            for (groups of page.SelectedSupergroups) {
+                var total = 0
+
+                for (group of groups) {
+                    total += group.Events.filter(afterCutoff(page.cutoff)).length
+                }
+
+                var current = aggregate.get(groups[0].Name)
+                if (!current) {
+                    current = 0
+                }
+                aggregate.set(groups[0].Name, current + total)
+            }
+        }
+
+        var out = []
+
+        for (var [k, v] of aggregate) {
+            out.push({ Name: k, Events: v })
+        }
+
+        return out
+    }
+
+    function afterCutoff(cutoff) {
+        return (e) => {
+            return !cutoff || e.End >= cutoff
+        }
+    }
+
+    function aggregateOther(data) {
+        var aggregate = new Map()
+
+        for (page of data.Pages) {
+            for (group of page.OtherGroups) {
+                var key = { Type: group.Type, Name: group.Name, Hint: group.Hint }
+
+                key = JSON.stringify(key)
+
+                var current = aggregate.get(key)
+                if (!current) {
+                    current = 0
+                }
+
+                aggregate.set(key, current + group.Events.filter(afterCutoff(page.cutoff)).length)
+            }
+        }
+
+        var out = []
+
+        for (var [k, v] of aggregate) {
+            k = JSON.parse(k)
+            out.push({ ...k, Events: v })
+        }
+
+        return out
+    }
+
 
     function renderData(container, data) {
-        add(
-            container,
+        add(container,
             renderPages(data.Pages),
             div({ class: "header" }, "Підсумок"),
-            renderEntries(data.TotalUnknown, "Невідомі за всі документи"),
-            renderEntries(data.Total, "Суми за всі документи"),
+            renderGroups(aggregateOther(data), 0, "Невідомі за всі документи"),
+            renderGroups(aggregateSelected(data), 0, "Сума за всі документи"),
             div({ class: `header` }, "Примітки")
         )
 
-        for (footnote of data.Footnotes) {
-            var t = div(
-                { class: `table` },
-                div({ class: `divider` }, [footnote.Type, footnote.Name, footnote.Hint].filter(Boolean).join(" ")),
+        for (aggregate of data.AggregatedComments) {
+            var t = div({ class: `table` },
+                div({ class: `divider` },
+                    [aggregate.Type, aggregate.Name, aggregate.Hint].filter(Boolean).join(" ")
+                ),
             )
-            for (comment of footnote.Comments) {
-                add(
-                    t,
-                    div({ style: `grid-column: span 4;` }, comment)
-                )
+            for (comment of aggregate.Comments) {
+                add(t, div({ style: `grid-column: span 4;` }, comment))
             }
             add(container, t)
         }
 
-        add(
-            container,
+        add(container,
             textarea(
                 {
                     id: `summary`,
@@ -234,8 +302,7 @@
                     style: `border-radius: 12px; border: 1px solid #eee; padding: 6px;`,
                 },
             ),
-            div(
-                { class: `options` },
+            div({ class: `options` },
                 button({ onclick: () => { navigator.clipboard.writeText(document.getElementById('summary').value); alert('Скопійовано!') } }, "Скопіювати"),
                 button({ onclick: () => { navigator.share({ text: document.getElementById('summary').value }) } }, "Поділитися"),
             ),

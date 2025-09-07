@@ -15,6 +15,8 @@ func ParseTable(tag string, table *docx.Table) (out []entity.Record) {
 			continue
 		}
 
+		// TODO: start time, minutes?
+
 		end, err := strconv.ParseUint(endTime[:2], 10, 64)
 		if err != nil {
 			// report problem
@@ -23,8 +25,8 @@ func ParseTable(tag string, table *docx.Table) (out []entity.Record) {
 
 		parts := []string{}
 
-		for _, p := range row.TableCells[6].Paragraphs {
-			parts = append(parts, strings.Join(strings.Fields(p.String()), " "))
+		for _, paragraph := range row.TableCells[6].Paragraphs {
+			parts = append(parts, strings.Join(strings.Fields(paragraph.String()), " "))
 		}
 
 		item := parts[0]
@@ -35,39 +37,39 @@ func ParseTable(tag string, table *docx.Table) (out []entity.Record) {
 			hint = strings.Join(parts[1:], " ")
 		}
 
-		p := NameParser{
+		parser := NameParser{
 			In: []rune(item),
 		}
 
-		q := p.ParseName()
+		shortID := parser.ParseName()
 
 		paragraphs := []string{}
 
 		for _, p := range row.TableCells[8].Paragraphs {
 
-			p := p.String()
+			paragraph := p.String()
 
-			p = strings.Join(strings.Fields(p), " ")
+			paragraph = strings.Join(strings.Fields(paragraph), " ")
 
-			if p == "ОПДК не виявлено" {
+			// ???
+			if paragraph == "ОПДК не виявлено" {
 				continue
 			}
 
-			if len(p) > 0 {
-				paragraphs = append(paragraphs, p)
+			if len(paragraph) > 0 {
+				paragraphs = append(paragraphs, paragraph)
 			}
 		}
 
-		// if len(paragraphs) < 1 {
-		// 	continue
-		// }
-
 		record := entity.Record{
 			ID: entity.ID{
-				q,
+				shortID,
 				hint,
 			},
-			EndHour: end,
+			Event: entity.Event{
+				Start: 0,
+				End:   end,
+			},
 			Comment: strings.Join(paragraphs, "\n"),
 		}
 

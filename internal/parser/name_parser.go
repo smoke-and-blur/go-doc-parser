@@ -107,7 +107,7 @@ func (p *NameParser) trimQuotes() (out []rune) {
 	return out
 }
 
-func (p *NameParser) ParseName() entity.QualifiedName {
+func (p *NameParser) ParseName() entity.ShortID {
 	// t := p.MatchChar("віпс", "впс", "ГОРВ", "ПОРВ", "ВОПР та ПБПС", "ГОРВ ВАЗ") //
 	t := p.MatchChar("віпс", "впс")
 
@@ -122,5 +122,5 @@ func (p *NameParser) ParseName() entity.QualifiedName {
 
 	// fmt.Printf("%s %d %c\n", string(n), p.Position, p.In[p.Position-1])
 
-	return entity.QualifiedName{t, string(name)}
+	return entity.ShortID{t, string(name)}
 }

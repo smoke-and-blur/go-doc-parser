@@ -3,22 +3,19 @@ package processor
 import (
 	"archive/zip"
 	"bytes"
-	"fmt"
-	"go-doc-parser/internal/entity"
-	"go-doc-parser/internal/generator"
+	. "go-doc-parser/internal/entity"
 	"go-doc-parser/internal/parser"
 	"io"
 
 	"github.com/fumiama/go-docx"
 )
 
-func NewProcessor(dictionary [][]entity.QualifiedName) func(files []*zip.File) (out entity.Data) {
-	cases := generator.Plural("випадку", "випадках", "випадках")
+func NewProcessor(dictionary [][]ID) func(files []*zip.File) (out Data) {
+	// cases := generator.Plural("випадку", "випадках", "випадках")
 
-	return func(files []*zip.File) (out entity.Data) {
+	return func(files []*zip.File) (out Data) {
 
-		overall := map[entity.ID]int{}
-		overallComments := map[entity.ID][]string{}
+		aggregateComments := map[ID][]string{}
 
 		for _, file := range files {
 			opened, _ := file.Open()
@@ -37,66 +34,46 @@ func NewProcessor(dictionary [][]entity.QualifiedName) func(files []*zip.File) (
 			// inject
 			records := parser.ParseTable(file.Name, table)
 
-			p := Processor{
-				Known:     map[entity.QualifiedName]int{},
-				Unknown:   map[entity.ID]int{},
-				Commented: map[entity.ID][]string{},
+			p := Collector{
+				EventsBySelectedIDs: map[ShortID][]Event{},
+				EventsByOtherIDs:    map[ID][]Event{},
+				CommentsByIDs:       map[ID][]string{},
 			}
 
 			for _, group := range dictionary {
-				for _, name := range group {
-					p.Known[name] = 0
+				for _, id := range group {
+					p.EventsBySelectedIDs[id.ShortID] = []Event{} // empty array to make sure the key exists
 				}
 			}
 
-			p.Process(records)
+			p.Collect(records)
 
-			for id, comments := range p.Commented {
-				for _, comment := range comments {
-					if len(comment) > 0 {
-						overallComments[id] = append(overallComments[id], comment)
-					}
-				}
+			for id, comments := range p.CommentsByIDs {
+				aggregateComments[id] = append(aggregateComments[id], comments...)
 			}
 
-			page := entity.Page{
-				Filename: file.FileHeader.Name,
-			}
+			selectedSupergroups := [][]EventGroup{}
 
-			for _, group := range dictionary {
-				total := 0
-
-				entries := []entity.Entry{}
-
-				for _, name := range group {
-					count := p.Known[name]
-
-					entries = append(
-						entries,
-						entity.Entry{
-							entity.ID{
-								name, "",
-							}, count,
-						},
-					)
-
-					total += count
+			for _, groupIDs := range dictionary {
+				groups := []EventGroup{}
+				for _, groupID := range groupIDs {
+					events := p.EventsBySelectedIDs[groupID.ShortID]
+					groups = append(groups, EventGroup{ID: groupID, Events: events})
 				}
 
-				overall[entity.ID{group[0], ""}] += total
-
-				page.KnownGroups = append(
-					page.KnownGroups,
-					entity.Group{
-						Entries: entries,
-						Total:   total,
-					},
-				)
+				selectedSupergroups = append(selectedSupergroups, groups)
 			}
 
-			for k, count := range p.Unknown {
-				page.UnknownEntries = append(page.UnknownEntries, entity.Entry{k, count})
-				overall[k] += count
+			otherGroups := []EventGroup{}
+
+			for id, group := range p.EventsByOtherIDs {
+				otherGroups = append(otherGroups, EventGroup{id, group})
+			}
+
+			page := Page{
+				Filename:            file.FileHeader.Name,
+				SelectedSupergroups: selectedSupergroups,
+				OtherGroups:         otherGroups,
 			}
 
 			out.Pages = append(out.Pages, page)
@@ -104,37 +81,36 @@ func NewProcessor(dictionary [][]entity.QualifiedName) func(files []*zip.File) (
 
 		summary := ""
 
-		for i, group := range dictionary {
-			name := group[0]
-			id := entity.ID{name, ""}
-			total := overall[id]
+		// 	name := group[0]
+		// 	id := entity.ID{name, ""}
+		// 	total := overall[id]
 
-			delete(overall, id)
+		// 	delete(overall, id)
 
-			comment := "ОПДК не виявлено"
+		// 	comment := "ОПДК не виявлено"
 
-			times := len(overallComments[id])
+		// 	times := len(overallComments[id])
 
-			if times > 0 {
-				comment = fmt.Sprintf("в %s M затриманих", cases(times))
-			}
+		// 	if times > 0 {
+		// 		comment = fmt.Sprintf("в %s M затриманих", cases(times))
+		// 	}
 
-			summary += fmt.Sprintf("%d. %s - польотів: %d, %s;\n", i+1, group[0].Name, total, comment)
+		// 	summary += fmt.Sprintf("%d. %s - польотів: %d, %s;\n", i+1, group[0].Name, total, comment)
 
-			out.Total = append(out.Total, entity.Entry{entity.ID{name, ""}, total})
-		}
+		// 	out.Total = append(out.Total, entity.Entry{entity.ID{name, ""}, total})
+		// }
 
-		for id, total := range overall {
-			t := id.Type
-			if len(t) < 1 {
-				t = "інше"
-			}
+		// for id, total := range overall {
+		// 	t := id.Type
+		// 	if len(t) < 1 {
+		// 		t = "інше"
+		// 	}
 
-			out.TotalUnknown = append(out.TotalUnknown, entity.Entry{id, total})
-		}
+		// 	out.TotalUnknown = append(out.TotalUnknown, entity.Entry{id, total})
+		// }
 
-		for key, comments := range overallComments {
-			out.Footnotes = append(out.Footnotes, entity.Footnote{key, comments})
+		for id, comments := range aggregateComments {
+			out.AggregatedComments = append(out.AggregatedComments, CommentGroup{id, comments})
 		}
 
 		out.Summary = summary
@@ -143,32 +119,26 @@ func NewProcessor(dictionary [][]entity.QualifiedName) func(files []*zip.File) (
 	}
 }
 
-type Processor struct {
-	Known     map[entity.QualifiedName]int
-	Unknown   map[entity.ID]int
-	Commented map[entity.ID][]string
+// collect all events selected and other plus comments and group them by id
+type Collector struct {
+	EventsBySelectedIDs map[ShortID][]Event // need to fill in empty items for all selected ids before using
+	EventsByOtherIDs    map[ID][]Event
+	CommentsByIDs       map[ID][]string
 }
 
-func (p Processor) Process(records []entity.Record) {
+func (p Collector) Collect(records []Record) {
 	for _, record := range records {
-		// filter records happened after 18:00???
-		// if record.EndHour < 18 {
-		// 	continue
-		// }
+		if len(record.Comment) > 0 {
+			p.CommentsByIDs[record.ID] = append(p.CommentsByIDs[record.ID], record.Comment)
+		}
 
-		count, ok := p.Known[record.QualifiedName]
+		_, ok := p.EventsBySelectedIDs[record.ShortID] // ignore hint within ID for selected events
 		if !ok {
-			count := p.Unknown[record.ID]
-			p.Unknown[record.ID] = count + 1
-			p.Commented[record.ID] = append(p.Commented[record.ID], record.Comment)
+			// not found, so register it as other event
+			p.EventsByOtherIDs[record.ID] = append(p.EventsByOtherIDs[record.ID], record.Event) // use the full ID for this
 			continue
 		}
 
-		if len(record.Comment) > 0 {
-			id := entity.ID{record.QualifiedName, ""}
-			p.Commented[id] = append(p.Commented[id], record.Comment)
-		}
-
-		p.Known[record.QualifiedName] = count + 1
+		p.EventsBySelectedIDs[record.ShortID] = append(p.EventsBySelectedIDs[record.ShortID], record.Event)
 	}
 }

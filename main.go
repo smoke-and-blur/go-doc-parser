@@ -12,7 +12,7 @@ import (
 
 func main() {
 	// dictionary sets up the right order for the names
-	dictionary := [][]entity.QualifiedName{}
+	dictionary := [][]entity.ID{}
 
 	data := os.Getenv("DATA")
 
