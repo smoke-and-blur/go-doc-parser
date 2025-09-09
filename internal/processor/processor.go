@@ -15,7 +15,7 @@ func NewProcessor(dictionary [][]ID) func(files []*zip.File) (out Data) {
 
 	return func(files []*zip.File) (out Data) {
 
-		aggregateComments := map[ID][]string{}
+		aggregateComments := map[ID][]Event{}
 
 		for _, file := range files {
 			opened, _ := file.Open()
@@ -37,7 +37,7 @@ func NewProcessor(dictionary [][]ID) func(files []*zip.File) (out Data) {
 			p := Collector{
 				EventsBySelectedIDs: map[ShortID][]Event{},
 				EventsByOtherIDs:    map[ID][]Event{},
-				CommentsByIDs:       map[ID][]string{},
+				CommentsByIDs:       map[ID][]Event{},
 			}
 
 			for _, group := range dictionary {
@@ -52,22 +52,22 @@ func NewProcessor(dictionary [][]ID) func(files []*zip.File) (out Data) {
 				aggregateComments[id] = append(aggregateComments[id], comments...)
 			}
 
-			selectedSupergroups := [][]EventGroup{}
+			selectedSupergroups := [][]Group{}
 
 			for _, groupIDs := range dictionary {
-				groups := []EventGroup{}
+				groups := []Group{}
 				for _, groupID := range groupIDs {
 					events := p.EventsBySelectedIDs[groupID.ShortID]
-					groups = append(groups, EventGroup{ID: groupID, Events: events})
+					groups = append(groups, Group{ID: groupID, Events: events})
 				}
 
 				selectedSupergroups = append(selectedSupergroups, groups)
 			}
 
-			otherGroups := []EventGroup{}
+			otherGroups := []Group{}
 
 			for id, group := range p.EventsByOtherIDs {
-				otherGroups = append(otherGroups, EventGroup{id, group})
+				otherGroups = append(otherGroups, Group{id, group})
 			}
 
 			page := Page{
@@ -110,7 +110,7 @@ func NewProcessor(dictionary [][]ID) func(files []*zip.File) (out Data) {
 		// }
 
 		for id, comments := range aggregateComments {
-			out.AggregatedComments = append(out.AggregatedComments, CommentGroup{id, comments})
+			out.AggregatedComments = append(out.AggregatedComments, Group{id, comments})
 		}
 
 		out.Summary = summary
@@ -123,13 +123,13 @@ func NewProcessor(dictionary [][]ID) func(files []*zip.File) (out Data) {
 type Collector struct {
 	EventsBySelectedIDs map[ShortID][]Event // need to fill in empty items for all selected ids before using
 	EventsByOtherIDs    map[ID][]Event
-	CommentsByIDs       map[ID][]string
+	CommentsByIDs       map[ID][]Event
 }
 
 func (p Collector) Collect(records []Record) {
 	for _, record := range records {
 		if len(record.Comment) > 0 {
-			p.CommentsByIDs[record.ID] = append(p.CommentsByIDs[record.ID], record.Comment)
+			p.CommentsByIDs[record.ID] = append(p.CommentsByIDs[record.ID], record.Event)
 		}
 
 		_, ok := p.EventsBySelectedIDs[record.ShortID] // ignore hint within ID for selected events

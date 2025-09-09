@@ -28,6 +28,7 @@
     * {
         font-size: 16px;
         box-sizing: border-box;
+        margin: 0;
     }
 
     .divider {
@@ -78,6 +79,7 @@
         flex-direction: row;
         gap: 16px;
         justify-content: center;
+        align-items: center;
         width: 100%;
     }
 
@@ -101,13 +103,169 @@
         border-radius: 12px;
         padding: 6px;
     }
+
+    input[type="checkbox"] {
+        width: 24px;
+        height: 24px;
+    }
 </style>
+
+<script src="https://d3js.org/d3.v7.min.js"></script>
 
 <script>
     const { p, div, pre, button, textarea, img, input } = van.tags
     const add = van.add
 
-    var data = {{.}}
+    let data = {{.}}
+
+    for (const page of data.Pages) {
+        page.cutoff = van.state(0)
+
+        for (const groups of page.SelectedSupergroups) {
+            for (const group of groups) {
+                group.filtered = van.derive(() => group.Events.filter(afterCutoff(page.cutoff.val)).length)
+            }
+
+            groups.total = van.derive(() => {
+                let total = 0
+                for (const group of groups) {
+                    total += group.filtered.val
+                }
+                return total
+            })
+
+
+        }
+
+        for (const group of page.OtherGroups) {
+            group.filtered = van.derive(() => group.Events.filter(afterCutoff(page.cutoff.val)).length)
+        }
+    }
+
+    let aggregateSelected = van.derive(() => {
+        var aggregate = new Map()
+
+        for (page of data.Pages) {
+            for (groups of page.SelectedSupergroups) {
+                var current = aggregate.get(groups[0].Name)
+                if (!current) {
+                    current = 0
+                }
+                aggregate.set(groups[0].Name, current + groups.total.val)
+            }
+        }
+
+        var out = []
+
+        for (var [k, v] of aggregate) {
+            out.push({ Name: k, filtered: v })
+        }
+
+        return out
+    })
+
+    let aggregateOther = van.derive(() => {
+        var aggregate = new Map()
+
+        for (page of data.Pages) {
+            for (group of page.OtherGroups) {
+                var key = { Type: group.Type, Name: group.Name, Hint: group.Hint }
+
+                key = JSON.stringify(key)
+
+                var current = aggregate.get(key)
+                if (!current) {
+                    current = 0
+                }
+
+                aggregate.set(key, current + group.filtered.val)
+            }
+        }
+
+        out = []
+
+        for (var [k, v] of aggregate) {
+            k = JSON.parse(k)
+            out.push({ ...k, filtered: v })
+        }
+
+        return out
+    })
+
+    let aggregateComments = van.derive(() => {
+        console.log("aggregate")
+
+        let aggregate = new Map();
+
+        for (page of data.Pages) {
+            for (group of page.OtherGroups) {
+                for (comment of group.Events.filter(afterCutoff(page.cutoff.val)).filter((e) => e.Comment)) {
+                    id = JSON.stringify({ Type: group.Type, Name: group.Name, Hint: group.Hint })
+                    let current = aggregate.get(group.ID)
+                    if (!current) {
+                        current = []
+                    }
+                    current.push(comment)
+                    aggregate.set(id, current)
+                }
+            }
+
+            for (groups of page.SelectedSupergroups) {
+                for (group of groups) {
+                    for (comment of group.Events.filter(afterCutoff(page.cutoff.val)).filter((e) => e.Comment)) {
+                        id = JSON.stringify({ Name: groups[0].Name })
+                        let current = aggregate.get(group.ID)
+                        if (!current) {
+                            current = []
+                        }
+                        current.push(comment)
+                        aggregate.set(id, current)
+                    }
+                }
+            }
+        }
+
+        out = []
+
+        for ([k, v] of aggregate) {
+            k = JSON.parse(k)
+            out.push({ ...k, comments: v })
+        }
+
+        return out
+    })
+
+    let renderedComments = van.derive(() => {
+        console.log("rerender")
+        let out = document.createDocumentFragment();
+
+        for (group of aggregateComments.val) {
+            var t = div({ class: `table` },
+                div({ class: `divider` },
+                    [group.Type, group.Name, group.Hint].filter(Boolean).join(" ")
+                ),
+            )
+
+            if (!group.comments) {
+                continue
+            }
+
+            for (comment of group.comments) {
+                console.log(comment)
+                add(t, div({ style: `grid-column: span 4;` }, comment.Comment))
+            }
+
+            add(out, t)
+        }
+
+        return out
+    })
+
+    function afterCutoff(cutoff) {
+        return (e) => {
+            return !cutoff || e.End >= cutoff
+        }
+    }
 
     document.addEventListener(
         "DOMContentLoaded",
@@ -122,6 +280,50 @@
             renderData(container, data)
         }
     )
+
+    function renderChart(events) {
+        return
+        // Declare the chart dimensions and margins.
+
+        // for (event of events) {
+        //     event.EndTime
+        // }
+
+        const width = 720;
+        const height = 200;
+        const marginTop = 0;
+        const marginRight = 0;
+        const marginBottom = 0;
+        const marginLeft = 0;
+
+        // Declare the x (horizontal position) scale.
+        const x = d3.scaleUtc()
+            .domain([new Date("2023-01-01"), new Date("2024-01-01")])
+            .range([marginLeft, width - marginRight]);
+
+        // Declare the y (vertical position) scale.
+        const y = d3.scaleLinear()
+            .domain([0, 100])
+            .range([height - marginBottom, marginTop]);
+
+        // Create the SVG container.
+        const svg = d3.create("svg")
+            .attr("width", width)
+            .attr("height", height);
+
+        // Add the x-axis.
+        svg.append("g")
+            .attr("transform", `translate(0,${height - marginBottom})`)
+            .call(d3.axisBottom(x));
+
+        // Add the y-axis.
+        svg.append("g")
+            .attr("transform", `translate(${marginLeft},0)`)
+            .call(d3.axisLeft(y));
+
+        // Append the SVG element.
+        return svg.node();
+    }
 
     function calculateSpans(items) {
         var last = -1
@@ -143,7 +345,7 @@
         }
     }
 
-    function renderGroups(groups, divider, cutoff, sum) {
+    function renderGroups(groups, divider, sum) {
         if (!groups) {
             console.log(groups, divider)
             return
@@ -168,28 +370,29 @@
                 component.value && add(out, div({ style: `grid-column: span ${component.span};` }, component.value))
             }
 
-            var length = group.Events
+            // var length = group.Events
 
-            if (Array.isArray(group.Events)) {
-                length = group.Events.filter(afterCutoff(cutoff)).length
-            }
+            // TODO: ???
+            // if (Array.isArray(group.Events)) {
+            // length = group.filtered.length
+            // }
 
-            total += length
+            // total += length
 
-            add(out, div({ class: `number` }, length))
+            add(out, div({ class: `number` }, group.filtered))
         }
 
-        sum && add(out, div({ class: `number`, style: `grid-column: span 4; font-weight:bold` }, total))
+        sum && add(out, div({ class: `number`, style: `grid-column: span 4; font-weight:bold` }, groups.total))
 
         return out
     }
 
-    function renderSupergroups(supergroups, cutoff) {
+    function renderSupergroups(supergroups) {
         var out = []
 
         for (groups of supergroups) {
             out.push(
-                add(renderGroups(groups, groups[0].Name, cutoff, true))
+                add(renderGroups(groups, groups[0].Name, true))
             )
         }
 
@@ -201,97 +404,32 @@
         for (let page of pages) {
             out.push(
                 div({ class: "header" }, page.Filename),
-                input({type: "number", onchange: (e)=>page.cutoff=e.target.valueAsNumber, value: page.cutoff}),
-                renderSupergroups(page.SelectedSupergroups, page.cutoff), // "Відомі"
-                renderGroups(page.OtherGroups, "Інші", page.cutoff),
+                renderChart(),
+                div({ class: "options", style: `gap: 4px` },
+                    input({ type: "checkbox", onchange: (e) => page.cutoff.val = e.target.checked ? 18 : 0 }),
+                    p("18:00-00:00"),
+                ),
+                renderSupergroups(page.SelectedSupergroups), // "Відомі"
+                renderGroups(page.OtherGroups, "Інші"),
             )
         }
-        return out
-    }
-
-    function aggregateSelected(data) {
-        var aggregate = new Map()
-
-        for (page of data.Pages) {
-            for (groups of page.SelectedSupergroups) {
-                var total = 0
-
-                for (group of groups) {
-                    total += group.Events.filter(afterCutoff(page.cutoff)).length
-                }
-
-                var current = aggregate.get(groups[0].Name)
-                if (!current) {
-                    current = 0
-                }
-                aggregate.set(groups[0].Name, current + total)
-            }
-        }
-
-        var out = []
-
-        for (var [k, v] of aggregate) {
-            out.push({ Name: k, Events: v })
-        }
 
         return out
     }
-
-    function afterCutoff(cutoff) {
-        return (e) => {
-            return !cutoff || e.End >= cutoff
-        }
-    }
-
-    function aggregateOther(data) {
-        var aggregate = new Map()
-
-        for (page of data.Pages) {
-            for (group of page.OtherGroups) {
-                var key = { Type: group.Type, Name: group.Name, Hint: group.Hint }
-
-                key = JSON.stringify(key)
-
-                var current = aggregate.get(key)
-                if (!current) {
-                    current = 0
-                }
-
-                aggregate.set(key, current + group.Events.filter(afterCutoff(page.cutoff)).length)
-            }
-        }
-
-        var out = []
-
-        for (var [k, v] of aggregate) {
-            k = JSON.parse(k)
-            out.push({ ...k, Events: v })
-        }
-
-        return out
-    }
-
 
     function renderData(container, data) {
         add(container,
             renderPages(data.Pages),
             div({ class: "header" }, "Підсумок"),
-            renderGroups(aggregateOther(data), 0, "Невідомі за всі документи"),
-            renderGroups(aggregateSelected(data), 0, "Сума за всі документи"),
-            div({ class: `header` }, "Примітки")
+            () => renderGroups(aggregateOther.val, "Невідомі за всі документи", 0),
+            () => renderGroups(aggregateSelected.val, "Сума за всі документи", 0),
+            div({ class: `header` }, "Примітки"),
+            ()=>{
+                console.log("hello")
+                return aggregateComments.val[0].Comment
+            },
         )
 
-        for (aggregate of data.AggregatedComments) {
-            var t = div({ class: `table` },
-                div({ class: `divider` },
-                    [aggregate.Type, aggregate.Name, aggregate.Hint].filter(Boolean).join(" ")
-                ),
-            )
-            for (comment of aggregate.Comments) {
-                add(t, div({ style: `grid-column: span 4;` }, comment))
-            }
-            add(container, t)
-        }
 
         add(container,
             textarea(

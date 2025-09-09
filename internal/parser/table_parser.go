@@ -67,10 +67,10 @@ func ParseTable(tag string, table *docx.Table) (out []entity.Record) {
 				hint,
 			},
 			Event: entity.Event{
-				Start: 0,
-				End:   end,
+				Start:   0,
+				End:     end,
+				Comment: strings.Join(paragraphs, "\n"),
 			},
-			Comment: strings.Join(paragraphs, "\n"),
 		}
 
 		out = append(out, record)

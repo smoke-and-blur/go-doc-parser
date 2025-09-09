@@ -1,26 +1,21 @@
 package entity
 
-type EventGroup struct {
+type Group struct {
 	ID
 	Events []Event
 }
 
-type CommentGroup struct {
-	ID
-	Comments []string
-}
-
 type Page struct {
 	Filename            string
-	SelectedSupergroups [][]EventGroup
-	OtherGroups         []EventGroup
+	SelectedSupergroups [][]Group
+	OtherGroups         []Group
 }
 
 type Data struct {
 	Pages              []Page
-	AggregatedSelected []EventGroup
-	AggregatedOther    []EventGroup
-	AggregatedComments []CommentGroup
+	AggregatedSelected []Group
+	AggregatedOther    []Group
+	AggregatedComments []Group
 	Summary            string
 }
 
@@ -35,12 +30,12 @@ type ShortID struct {
 }
 
 type Event struct {
-	Start uint64 // hour?
-	End   uint64 // hour?
+	Start   uint64 // hour?
+	End     uint64 // hour?
+	Comment string
 }
 
 type Record struct {
 	ID
 	Event
-	Comment string
 }
