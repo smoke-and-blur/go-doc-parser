@@ -51,6 +51,12 @@
         padding: 16px;
     }
 
+    .matrix {
+        display: grid;
+        gap: 16px;
+        grid-template-columns: 1fr 1fr;
+    }
+
     #container>* {
         width: 100%;
     }
@@ -96,6 +102,7 @@
     }
 
     .table {
+        align-content: start;
         display: grid;
         grid-template-columns: 1fr 5fr 5fr 1fr;
         gap: 6px;
@@ -193,8 +200,6 @@
     })
 
     let aggregateComments = van.derive(() => {
-        console.log("aggregate")
-
         let aggregate = new Map();
 
         for (page of data.Pages) {
@@ -236,8 +241,7 @@
     })
 
     let renderedComments = van.derive(() => {
-        console.log("rerender")
-        let out = document.createDocumentFragment();
+        let out = div({ class: "matrix" });
 
         for (group of aggregateComments.val) {
             var t = div({ class: `table` },
@@ -251,11 +255,47 @@
             }
 
             for (comment of group.comments) {
-                console.log(comment)
                 add(t, div({ style: `grid-column: span 4;` }, comment.Comment))
             }
 
             add(out, t)
+        }
+
+        return out
+    })
+
+    function Plural(one, few, many) {
+        return function (n) {
+            const mod10 = n % 10;
+            const mod100 = n % 100;
+
+            let out = many;
+
+            if (mod10 === 1 && mod100 !== 11) {
+                out = one;
+            } else if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) {
+                out = few;
+            }
+
+            return `${n} ${out}`;
+        };
+    }
+
+
+    let summary = van.derive(() => {
+        let out = ""
+
+        let cases = new Map(aggregateComments.val.map(comment => [comment.Name, comment.comments.length]))
+
+        for ([index, groups] of aggregateSelected.val.entries()) {
+            let subsummary = "ОПДК не виявлено"
+            let count = cases.get(groups.Name)
+
+            let casesText = Plural("випадку", "випадках", "випадках")
+            if (count > 0) {
+                subsummary = `в ${casesText(count)} _ затриманих`
+            }
+            out += `${index + 1}. ${groups.Name} - польотів: ${groups.filtered}, ${subsummary};\n`
         }
 
         return out
@@ -404,12 +444,13 @@
         for (let page of pages) {
             out.push(
                 div({ class: "header" }, page.Filename),
-                renderChart(),
                 div({ class: "options", style: `gap: 4px` },
                     input({ type: "checkbox", onchange: (e) => page.cutoff.val = e.target.checked ? 18 : 0 }),
                     p("18:00-00:00"),
                 ),
-                renderSupergroups(page.SelectedSupergroups), // "Відомі"
+                div({ class: "matrix" },
+                    renderSupergroups(page.SelectedSupergroups), // "Відомі"
+                ),
                 renderGroups(page.OtherGroups, "Інші"),
             )
         }
@@ -424,10 +465,7 @@
             () => renderGroups(aggregateOther.val, "Невідомі за всі документи", 0),
             () => renderGroups(aggregateSelected.val, "Сума за всі документи", 0),
             div({ class: `header` }, "Примітки"),
-            ()=>{
-                console.log("hello")
-                return aggregateComments.val[0].Comment
-            },
+            () => { return renderedComments.val },
         )
 
 
@@ -436,7 +474,7 @@
                 {
                     id: `summary`,
                     rows: 12,
-                    value: data.Summary,
+                    value: () => summary.val,
                     style: `border-radius: 12px; border: 1px solid #eee; padding: 6px;`,
                 },
             ),
