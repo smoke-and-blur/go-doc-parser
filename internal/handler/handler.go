@@ -12,6 +12,8 @@ import (
 
 func Handler(process func([]*zip.File) entity.Data) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "https://js-doc-parser.onrender.com")
+
 		// for k, v := range r.Header {
 		// 	for _, v := range v {
 		// 		fmt.Println(k, v)
