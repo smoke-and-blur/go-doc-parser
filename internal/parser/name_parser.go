@@ -90,12 +90,9 @@ func (p *NameParser) trimQuotes() (out []rune) {
 
 	// fmt.Printf("%c %t\n", r, isQuotation)
 
-	// no opening quote found, doing nothing
-	if !unicode.Is(unicode.Quotation_Mark, r) {
-		return p.In[p.Position:]
+	if unicode.Is(unicode.Quotation_Mark, r) {
+		p.Position++
 	}
-
-	p.Position++
 
 	out = p.In[p.Position:len(p.In)]
 
@@ -133,6 +130,10 @@ func (p *NameParser) ParseName() entity.ShortID {
 			break
 		}
 	}
+
+	// if len(t) < 1 {
+	// 	return entity.ShortID{"", string(p.In[p.Position:])}
+	// }
 
 	// fmt.Printf("%d %c\n", p.Position, p.In[p.Position])
 
