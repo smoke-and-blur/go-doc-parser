@@ -206,7 +206,7 @@
             for (group of page.OtherGroups) {
                 for (comment of group.Events.filter(afterCutoff(page.cutoff.val)).filter((e) => e.Comment)) {
                     id = JSON.stringify({ Type: group.Type, Name: group.Name, Hint: group.Hint })
-                    let current = aggregate.get(group.ID)
+                    let current = aggregate.get(id)
                     if (!current) {
                         current = []
                     }
@@ -219,7 +219,7 @@
                 for (group of groups) {
                     for (comment of group.Events.filter(afterCutoff(page.cutoff.val)).filter((e) => e.Comment)) {
                         id = JSON.stringify({ Name: groups[0].Name })
-                        let current = aggregate.get(group.ID)
+                        let current = aggregate.get(id)
                         if (!current) {
                             current = []
                         }
@@ -231,6 +231,8 @@
         }
 
         out = []
+
+        console.log(aggregate)
 
         for ([k, v] of aggregate) {
             k = JSON.parse(k)
@@ -385,7 +387,7 @@
         }
     }
 
-    function renderGroups(groups, divider, sum) {
+    function renderGroups(groups, divider, sum, draggable) {
         if (!groups) {
             console.log(groups, divider)
             return
@@ -405,19 +407,14 @@
             ]
 
             calculateSpans(components)
+            
 
+            // TODO: make sure the original events are transferred, so they can be filtered
+            // make sure there is a back button
+            // allow the entries to be selected
             for (component of components) {
-                component.value && add(out, div({ style: `grid-column: span ${component.span};` }, component.value))
+                component.value && add(out, div({ style: `grid-column: span ${component.span};`, draggable: draggable, ondragstart: (e)=>e.dataTransfer.setData("text/plain", "hello"), ondragover: (e)=>e.preventDefault(), ondragenter:(e)=>e.target.style.background="#eee", ondragleave:(e)=>e.target.style.background="none", ondrop: (e)=>{e.preventDefault();e.target.style.background="none";console.log("drop", e.dataTransfer);alert("drop")} }, component.value))
             }
-
-            // var length = group.Events
-
-            // TODO: ???
-            // if (Array.isArray(group.Events)) {
-            // length = group.filtered.length
-            // }
-
-            // total += length
 
             add(out, div({ class: `number` }, group.filtered))
         }
@@ -462,7 +459,7 @@
         add(container,
             renderPages(data.Pages),
             div({ class: "header" }, "Підсумок"),
-            () => renderGroups(aggregateOther.val, "Невідомі за всі документи", 0),
+            () => renderGroups(aggregateOther.val, "Невідомі за всі документи", 0, true),
             () => renderGroups(aggregateSelected.val, "Сума за всі документи", 0),
             div({ class: `header` }, "Примітки"),
             () => { return renderedComments.val },
@@ -480,7 +477,7 @@
             ),
             div({ class: `options` },
                 button({ onclick: () => { navigator.clipboard.writeText(document.getElementById('summary').value); alert('Скопійовано!') } }, "Скопіювати"),
-                button({ onclick: () => { navigator.share({ text: document.getElementById('summary').value }) } }, "Поділитися"),
+                button({ onclick: () => { navigator.share({ text: document.getElementById('summary').value }); } }, "Поділитися"),
             ),
         )
 
