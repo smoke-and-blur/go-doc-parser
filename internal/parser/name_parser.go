@@ -2,6 +2,7 @@ package parser
 
 import (
 	"go-doc-parser/internal/entity"
+	"strings"
 	"unicode"
 )
 
@@ -10,68 +11,67 @@ type NameParser struct {
 	Position int
 }
 
-// narrow down options character by character
-func (p *NameParser) matchChar(options [][]rune, i int) [][]rune {
-	if len(options) == 1 && len(options[0]) == i { // reached the end of the word?
-		p.Position += i
-		return options
-	}
-
-	out := [][]rune{}
-
-	if p.Position+i >= len(p.In) {
-		return nil
-	}
-
-	for _, option := range options {
-		if i >= len(option) {
-			continue
-		}
-
-		if p.In[p.Position+i] == option[i] {
-			out = append(out, option)
-		}
-	}
-
-	if len(out) < 1 {
-		return nil
-	}
-
-	i++
-
-	return p.matchChar(out, i)
-}
-
 func (p *NameParser) MatchChar(options ...string) string {
-	runeOptions := [][]rune{}
-
-	for _, option := range options {
-		runeOptions = append(runeOptions, []rune(option))
+	// not needed if no recursion
+	// because this is already covered by
+	// the for loop condition
+	// ???
+	if len(p.In) <= p.Position {
+		return ""
 	}
 
-	out := p.matchChar(runeOptions, 0)
+	suitable := map[string]bool{}
 
-	if len(out) > 0 {
-		return string(out[0])
+	for _, o := range options {
+		suitable[o] = true
 	}
 
-	// longest := ""
+	longest := []rune{}
 
-	// for _, option := range out {
-	// 	if len(option) > len(longest) {
-	// 		longest = string(option)
-	// 	}
-	// }
+	for i := 0; i < len(p.In[p.Position:]); i++ {
+		for key := range suitable {
+			// skip already marked
+			if !suitable[key] {
+				continue
+			}
 
-	// p.Position += len(longest)
+			// we have gone past the option length
+			// skip, do not mark
+			option := []rune(key)
+			if i >= len(option) {
+				continue
+			}
 
-	// return longest
+			// has wrong characters (case ignored), mark and skip
+			if unicode.ToUpper(option[i]) != unicode.ToUpper(p.In[p.Position+i]) {
+				suitable[key] = false
+				continue
+			}
 
-	return ""
+			// continue if this is not the option's last character
+			if i < len(option)-1 {
+				continue
+			}
+
+			// use the option
+			// the mark remains true from now on
+
+			if len(option) > len(longest) {
+				longest = option
+			}
+		}
+	}
+
+	// fmt.Printf("suitable: %#v\n", suitable)
+	// fmt.Printf("longest: %s\n", string(longest))
+
+	p.Position += len(longest)
+
+	return string(longest)
 }
 
 func (p *NameParser) SkipSpace() {
-	if len(p.In) == p.Position {
+	if len(p.In) <= p.Position {
 		return
 	}
 
@@ -82,7 +82,7 @@ func (p *NameParser) SkipSpace() {
 }
 
 func (p *NameParser) trimQuotes() (out []rune) {
-	if len(p.In) == p.Position {
+	if len(p.In) <= p.Position {
 		return
 	}
 
@@ -90,14 +90,18 @@ func (p *NameParser) trimQuotes() (out []rune) {
 
 	// fmt.Printf("%c %t\n", r, isQuotation)
 
-	if unicode.Is(unicode.Quotation_Mark, r) {
-		p.Position++
+	// no opening quote found, doing nothing
+	if !unicode.Is(unicode.Quotation_Mark, r) {
+		return p.In[p.Position:]
 	}
+
+	p.Position++
 
 	out = p.In[p.Position:len(p.In)]
 
 	r = out[len(out)-1]
 
+	// assume the whole input ends in quote
 	if unicode.Is(unicode.Quotation_Mark, r) {
 		out = out[:len(out)-1]
 	}
@@ -108,12 +112,28 @@ func (p *NameParser) trimQuotes() (out []rune) {
 }
 
 func (p *NameParser) ParseName() entity.ShortID {
-	// t := p.MatchChar("віпс", "впс", "ГОРВ", "ПОРВ", "ВОПР та ПБПС", "ГОРВ ВАЗ") //
-	t := p.MatchChar("віпс", "впс")
+	// t = p.MatchChar("віпс", "впс")
 
-	// fmt.Printf("%s %d %c\n", t, p.Position, p.In[p.Position])
+	var t = []string{}
 
-	p.SkipSpace()
+	for {
+		matched := p.MatchChar("віпс", "впс", "ГОРВ", "ПОРВ", "ВОПР та ПБПС", "ВАЗ", "ВАК", "УОРД ПдРУ", "ВБТЗ", "2", "ПРИКЗ")
+
+		if len(matched) > 0 {
+			t = append(t, matched)
+		}
+
+		// fmt.Printf("%s %d %c\n", t, p.Position, p.In[p.Position])
+
+		// fmt.Println(len(t), t)
+
+		p.SkipSpace()
+
+		if len(matched) < 1 {
+			break
+		}
+	}
+
 	// fmt.Printf("%d %c\n", p.Position, p.In[p.Position])
 
 	// n := p.filterSymbols([]rune{})
@@ -122,5 +142,5 @@ func (p *NameParser) ParseName() entity.ShortID {
 
 	// fmt.Printf("%s %d %c\n", string(n), p.Position, p.In[p.Position-1])
 
-	return entity.ShortID{t, string(name)}
+	return entity.ShortID{strings.Join(t, " "), string(name)}
 }

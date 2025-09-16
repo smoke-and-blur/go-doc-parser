@@ -11,8 +11,6 @@ import (
 )
 
 func NewProcessor(dictionary [][]ID) func(files []*zip.File) (out Data) {
-	// cases := generator.Plural("випадку", "випадках", "випадках")
-
 	return func(files []*zip.File) (out Data) {
 
 		aggregateComments := map[ID][]Event{}
@@ -80,34 +78,6 @@ func NewProcessor(dictionary [][]ID) func(files []*zip.File) (out Data) {
 		}
 
 		summary := ""
-
-		// 	name := group[0]
-		// 	id := entity.ID{name, ""}
-		// 	total := overall[id]
-
-		// 	delete(overall, id)
-
-		// 	comment := "ОПДК не виявлено"
-
-		// 	times := len(overallComments[id])
-
-		// 	if times > 0 {
-		// 		comment = fmt.Sprintf("в %s M затриманих", cases(times))
-		// 	}
-
-		// 	summary += fmt.Sprintf("%d. %s - польотів: %d, %s;\n", i+1, group[0].Name, total, comment)
-
-		// 	out.Total = append(out.Total, entity.Entry{entity.ID{name, ""}, total})
-		// }
-
-		// for id, total := range overall {
-		// 	t := id.Type
-		// 	if len(t) < 1 {
-		// 		t = "інше"
-		// 	}
-
-		// 	out.TotalUnknown = append(out.TotalUnknown, entity.Entry{id, total})
-		// }
 
 		for id, comments := range aggregateComments {
 			out.AggregatedComments = append(out.AggregatedComments, Group{id, comments})
