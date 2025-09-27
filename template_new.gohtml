@@ -3,8 +3,7 @@
 
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-<script type="text/javascript"
-    src="https://cdn.jsdelivr.net/gh/vanjs-org/van/public/van-1.5.5.nomodule.min.js"></script>
+<script src="erg0.js"></script>
 
 <style>
     table * {
@@ -120,258 +119,280 @@
 <script src="https://d3js.org/d3.v7.min.js"></script>
 
 <script>
-    const { p, div, pre, button, textarea, img, input } = van.tags
-    const add = van.add
+
+    const { render, notify, tags, props, events } = erg0
+    const { p, div, pre, button, textarea, img, input, span } = tags
+    const { id, rows, value, type, className, style, src, draggable, checked } = props
+    const { onclick, onchange, ondragstart, ondragenter, ondragover, ondragleave, ondrop } = events
 
     let data = {{.}}
 
-    for (const page of data.Pages) {
-        page.cutoff = van.state(0)
+    data.Pages.sort((a, b) => a.Filename.localeCompare(b.Filename))
 
-        for (const groups of page.SelectedSupergroups) {
-            for (const group of groups) {
-                group.filtered = van.derive(() => group.Events.filter(afterCutoff(page.cutoff.val)).length)
-            }
-
-            groups.total = van.derive(() => {
-                let total = 0
-                for (const group of groups) {
-                    total += group.filtered.val
-                }
-                return total
-            })
-
-
-        }
-
-        for (const group of page.OtherGroups) {
-            group.filtered = van.derive(() => group.Events.filter(afterCutoff(page.cutoff.val)).length)
-        }
-    }
-
-    let aggregateSelected = van.derive(() => {
-        var aggregate = new Map()
-
-        for (page of data.Pages) {
-            for (groups of page.SelectedSupergroups) {
-                var current = aggregate.get(groups[0].Name)
-                if (!current) {
-                    current = 0
-                }
-                aggregate.set(groups[0].Name, current + groups.total.val)
-            }
-        }
-
-        var out = []
-
-        for (var [k, v] of aggregate) {
-            out.push({ Name: k, filtered: v })
-        }
-
-        return out
-    })
-
-    let aggregateOther = van.derive(() => {
-        var aggregate = new Map()
-
-        for (page of data.Pages) {
-            for (group of page.OtherGroups) {
-                var key = { Type: group.Type, Name: group.Name, Hint: group.Hint }
-
-                key = JSON.stringify(key)
-
-                var current = aggregate.get(key)
-                if (!current) {
-                    current = 0
-                }
-
-                aggregate.set(key, current + group.filtered.val)
-            }
-        }
-
-        out = []
-
-        for (var [k, v] of aggregate) {
-            k = JSON.parse(k)
-            out.push({ ...k, filtered: v })
-        }
-
-        return out
-    })
-
-    let aggregateComments = van.derive(() => {
-        let aggregate = new Map();
-
-        for (page of data.Pages) {
-            for (group of page.OtherGroups) {
-                for (comment of group.Events.filter(afterCutoff(page.cutoff.val)).filter((e) => e.Comment)) {
-                    id = JSON.stringify({ Type: group.Type, Name: group.Name, Hint: group.Hint })
-                    let current = aggregate.get(id)
-                    if (!current) {
-                        current = []
-                    }
-                    current.push(comment)
-                    aggregate.set(id, current)
-                }
-            }
-
-            for (groups of page.SelectedSupergroups) {
-                for (group of groups) {
-                    for (comment of group.Events.filter(afterCutoff(page.cutoff.val)).filter((e) => e.Comment)) {
-                        id = JSON.stringify({ Name: groups[0].Name })
-                        let current = aggregate.get(id)
-                        if (!current) {
-                            current = []
-                        }
-                        current.push(comment)
-                        aggregate.set(id, current)
-                    }
-                }
-            }
-        }
-
-        out = []
-
-        console.log(aggregate)
-
-        for ([k, v] of aggregate) {
-            k = JSON.parse(k)
-            out.push({ ...k, comments: v })
-        }
-
-        return out
-    })
-
-    let renderedComments = van.derive(() => {
-        let out = div({ class: "matrix" });
-
-        for (group of aggregateComments.val) {
-            var t = div({ class: `table` },
-                div({ class: `divider` },
-                    [group.Type, group.Name, group.Hint].filter(Boolean).join(" ")
-                ),
-            )
-
-            if (!group.comments) {
-                continue
-            }
-
-            for (comment of group.comments) {
-                add(t, div({ style: `grid-column: span 4;` }, comment.Comment))
-            }
-
-            add(out, t)
-        }
-
-        return out
-    })
-
-    function Plural(one, few, many) {
-        return function (n) {
-            const mod10 = n % 10;
-            const mod100 = n % 100;
-
-            let out = many;
-
-            if (mod10 === 1 && mod100 !== 11) {
-                out = one;
-            } else if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) {
-                out = few;
-            }
-
-            return `${n} ${out}`;
-        };
-    }
-
-
-    let summary = van.derive(() => {
-        let out = ""
-
-        let cases = new Map(aggregateComments.val.map(comment => [comment.Name, comment.comments.length]))
-
-        for ([index, groups] of aggregateSelected.val.entries()) {
-            let subsummary = "ОПДК не виявлено"
-            let count = cases.get(groups.Name)
-
-            let casesText = Plural("випадку", "випадках", "випадках")
-            if (count > 0) {
-                subsummary = `в ${casesText(count)} _ затриманих`
-            }
-            out += `${index + 1}. ${groups.Name} - польотів: ${groups.filtered}, ${subsummary};\n`
-        }
-
-        return out
-    })
-
-    function afterCutoff(cutoff) {
-        return (e) => {
-            return !cutoff || e.End >= cutoff
-        }
-    }
+    data.Pages[0].cutoff = 18
 
     document.addEventListener(
         "DOMContentLoaded",
         function () {
-            const container = document.getElementById('container')
+            const app = document.getElementById('app')
 
-            add(
-                container,
-                img({ src: `https://upload.wikimedia.org/wikipedia/commons/8/8d/Emblem_of_the_State_Border_Guard_Service_of_Ukraine.svg`, style: `width: 36px; height: 36px` },),
-            )
-
-            renderData(container, data)
+            render(Data, app)
         }
     )
 
-    function renderChart(events) {
-        return
-        // Declare the chart dimensions and margins.
+    function Data() {
+        return div(id`container`,
+            img(
+                style`width: 36px; height: 36px`,
+                src`https://upload.wikimedia.org/wikipedia/commons/8/8d/Emblem_of_the_State_Border_Guard_Service_of_Ukraine.svg`,
+            ),
+            ...aggregate(),
+            textarea(
+                id`summary`,
+                rows`12`,
+                style`border-radius: 12px; border: 1px solid #eee; padding: 6px;`,
+                `summary`
+            ),
+            div(className`options`,
+                button("Скопіювати",
+                    onclick(e => {
+                        navigator.clipboard.writeText(document.getElementById('summary').value)
+                        alert('Скопійовано!')
+                    }, !notify)
+                ),
+                button("Поділитися",
+                    onclick(e => {
+                        navigator.share({ text: document.getElementById('summary').value })
+                    }, !notify)
+                ),
+            ),
+        )
+    }
 
-        // for (event of events) {
-        //     event.EndTime
-        // }
+    function Header(page) {
+        return [
+            div(className`header`, page.Filename),
+            div(
+                className`options`,
+                style`gap: 4px`,
+                input(type`checkbox`, page.cutoff === 18 ? checked`` : null, onchange(e => page.cutoff = e.target.checked ? 18 : 0)),
+                p("18:00-00:00"),
+            ),
+        ]
+    }
 
-        const width = 720;
-        const height = 200;
-        const marginTop = 0;
-        const marginRight = 0;
-        const marginBottom = 0;
-        const marginLeft = 0;
+    function Group(page, group, sum) {
+        let out = []
 
-        // Declare the x (horizontal position) scale.
-        const x = d3.scaleUtc()
-            .domain([new Date("2023-01-01"), new Date("2024-01-01")])
-            .range([marginLeft, width - marginRight]);
+        const cells = [
+            { value: group.Type, span: 1 },
+            { value: group.Name, span: 1 },
+            { value: group.Hint, span: 1 },
+        ]
 
-        // Declare the y (vertical position) scale.
-        const y = d3.scaleLinear()
-            .domain([0, 100])
-            .range([height - marginBottom, marginTop]);
+        calculateSpans(cells)
 
-        // Create the SVG container.
-        const svg = d3.create("svg")
-            .attr("width", width)
-            .attr("height", height);
+        for (const component of cells) {
+            component.value && out.push(
+                div(
+                    style`grid-column: span ${component.span};`,
+                    component.value,
+                )
+            )
+        }
 
-        // Add the x-axis.
-        svg.append("g")
-            .attr("transform", `translate(0,${height - marginBottom})`)
-            .call(d3.axisBottom(x));
+        out.push(div(className`number`, sum))
 
-        // Add the y-axis.
-        svg.append("g")
-            .attr("transform", `translate(${marginLeft},0)`)
-            .call(d3.axisLeft(y));
+        return out
+    }
 
-        // Append the SVG element.
-        return svg.node();
+    function Divider(text) {
+        return div(className`divider`, text)
+    }
+
+    function Number(n) {
+        return div(
+            className`number`,
+            style`grid-column: span 4; font-weight:bold`,
+            n,
+        )
+    }
+
+    function Table(elements) {
+        return div(className`table`, ...elements)
+    }
+
+    function Matrix(elements) {
+        return div(className`matrix`, ...elements)
+    }
+
+    class EasyMap extends Map {
+        normalizeKey(key) {
+            if (typeof key === "object" && key !== null) {
+                return JSON.stringify(key, Object.keys(key).sort()); // stable order
+            }
+            return key;
+        }
+
+        push(key, value) {
+            const k = this.normalizeKey(key);
+            if (!this.has(k)) this.set(k, []);
+            this.get(k).push(...value);
+        }
+
+        increment(key, delta = 1) {
+            this.set(k, (this.getKey(k) ?? 0) + delta);
+        }
+
+        getKey(key) {
+            return this.get(this.normalizeKey(key));
+        }
+    }
+
+    function Action() {
+        return div(
+            style`cursor:pointer; display: inline-block; background: #eee; border: 1px solid #ddd; padding: 0 6px; border-radius: 8px;`,
+            ...arguments,
+        )
+    }
+
+    function tokenize(str) {
+        const re = /(\d+)\s*гр./g;
+        const tokens = [];
+        let lastIndex = 0;
+
+        for (const m of str.matchAll(re)) {
+            // push text before match
+            if (m.index > lastIndex) {
+                tokens.push({ type: "text", value: str.slice(lastIndex, m.index) });
+            }
+
+            // push the match itself
+            tokens.push({
+                type: "pieces",
+                value: m[0],   // e.g. "123 pieces"
+                number: m[1]  // just "123"
+            });
+
+            lastIndex = m.index + m[0].length;
+        }
+
+        // push any trailing text
+        if (lastIndex < str.length) {
+            tokens.push({ type: "text", value: str.slice(lastIndex) });
+        }
+
+        return tokens.map(t => t.type === "text" ? t.value : span(style`background:#eaa;border: 1px solid #d33; border-radius: 6px; padding: 0 6px`, t.value))
+    }
+
+    function Comment(key, comments) {
+        key = JSON.parse(key)
+        return [
+            Divider([key.Type, key.Name, key.Hint].filter(Boolean).join(" • ")),
+            ...comments.map(
+                comment => div(
+                    style`grid-column: span 4; white-space: pre; text-wrap: wrap; overflow-wrap: break-word;`,
+                    ...tokenize(comment.Comment),
+                    Action("→0", onclick(e => console.log(e.target))),
+                ),
+            ),
+        ]
+    }
+
+    function aggregate() {
+        aggregateSelected = new EasyMap();
+        aggregateOther = new EasyMap();
+        aggregateComments = new EasyMap();
+
+        let out = []
+
+        for (const page of data.Pages) {
+            page.cutoff ??= 0
+
+            out.push(...Header(page))
+
+            var total = 0
+
+            toplevel = []
+
+            for (const selectedSupergroup of page.SelectedSupergroups) {
+                items = [Divider(selectedSupergroup[0].Name)]
+
+                let total = 0
+
+                for (const group of selectedSupergroup) {
+                    // count function to reuse???
+                    let filtered = group.Events.filter(e => e.End >= page.cutoff)
+
+                    let key = { Name: selectedSupergroup[0].Name }
+
+                    aggregateSelected.push(key, filtered)
+
+                    // TODO: single reduce call aggregating events+comments???
+                    let comments = filtered.filter(e => e.Comment);
+
+                    comments.length > 0 && aggregateComments.push(key, comments)
+
+                    let sum = filtered.length
+
+                    total += sum
+
+                    items.push(...Group(page, group, sum))
+                }
+
+                items.push(Number(total))
+
+
+                toplevel.push(Table(items))
+            }
+
+            toplevel = [Matrix(toplevel)]
+
+            other = [Divider("Інші")]
+
+            for (const group of page.OtherGroups) {
+                let k = { Type: group.Type, Name: group.Name, Hint: group.Hint }
+
+                let filtered = group.Events.filter(e => e.End >= page.cutoff)
+
+                aggregateOther.push(k, filtered)
+
+                let comments = filtered.filter(e => e.Comment);
+
+                comments.length > 0 && aggregateComments.push(k, comments)
+
+                other.push(...Group(page, group, filtered.length))
+            }
+
+            toplevel.push(Table(other))
+
+            out.push(toplevel)
+        }
+
+        out.push(div(className`header`, "Підсумок"))
+
+        selected = [Divider("Сума за всі документи")]
+
+        aggregateSelected.forEach((events, k) => {
+            selected.push(...Group({ cutoff: 0 }, { Name: JSON.parse(k).Name }, events.length))
+        })
+
+        out.push(Table(selected))
+
+        out.push(div(className`header`, "Примітки"))
+
+        aggregateComments.forEach((c, key) => {
+            out.push(Table(Comment(key, c)))
+        })
+
+        return out
     }
 
     function calculateSpans(items) {
-        var last = -1
-        var span = 0
+        let last = -1
+        let span = 0
 
-        for (var i = 0; i < items.length + 1; i++) {
+        for (let i = 0; i < items.length + 1; i++) {
             if (items[last] && items[last].value) {
                 items[last].span += span
                 span = 0
@@ -387,103 +408,8 @@
         }
     }
 
-    function renderGroups(groups, divider, sum, draggable) {
-        if (!groups) {
-            console.log(groups, divider)
-            return
-        }
-
-        var out = div({ class: `table` })
-
-        divider && add(out, div({ class: 'divider' }, divider))
-
-        var total = 0
-
-        for (group of groups) {
-            const components = [
-                { value: group.Type, span: 1 },
-                { value: group.Name, span: 1 },
-                { value: group.Hint, span: 1 },
-            ]
-
-            calculateSpans(components)
-            
-
-            // TODO: make sure the original events are transferred, so they can be filtered
-            // make sure there is a back button
-            // allow the entries to be selected
-            for (component of components) {
-                component.value && add(out, div({ style: `grid-column: span ${component.span};`, draggable: draggable, ondragstart: (e)=>e.dataTransfer.setData("text/plain", "hello"), ondragover: (e)=>e.preventDefault(), ondragenter:(e)=>e.target.style.background="#eee", ondragleave:(e)=>e.target.style.background="none", ondrop: (e)=>{e.preventDefault();e.target.style.background="none";console.log("drop", e.dataTransfer);alert("drop")} }, component.value))
-            }
-
-            add(out, div({ class: `number` }, group.filtered))
-        }
-
-        sum && add(out, div({ class: `number`, style: `grid-column: span 4; font-weight:bold` }, groups.total))
-
-        return out
-    }
-
-    function renderSupergroups(supergroups) {
-        var out = []
-
-        for (groups of supergroups) {
-            out.push(
-                add(renderGroups(groups, groups[0].Name, true))
-            )
-        }
-
-        return out
-    }
-
-    function renderPages(pages) {
-        var out = []
-        for (let page of pages) {
-            out.push(
-                div({ class: "header" }, page.Filename),
-                div({ class: "options", style: `gap: 4px` },
-                    input({ type: "checkbox", onchange: (e) => page.cutoff.val = e.target.checked ? 18 : 0 }),
-                    p("18:00-00:00"),
-                ),
-                div({ class: "matrix" },
-                    renderSupergroups(page.SelectedSupergroups), // "Відомі"
-                ),
-                renderGroups(page.OtherGroups, "Інші"),
-            )
-        }
-
-        return out
-    }
-
-    function renderData(container, data) {
-        add(container,
-            renderPages(data.Pages),
-            div({ class: "header" }, "Підсумок"),
-            () => renderGroups(aggregateOther.val, "Невідомі за всі документи", 0, true),
-            () => renderGroups(aggregateSelected.val, "Сума за всі документи", 0),
-            div({ class: `header` }, "Примітки"),
-            () => { return renderedComments.val },
-        )
-
-
-        add(container,
-            textarea(
-                {
-                    id: `summary`,
-                    rows: 12,
-                    value: () => summary.val,
-                    style: `border-radius: 12px; border: 1px solid #eee; padding: 6px;`,
-                },
-            ),
-            div({ class: `options` },
-                button({ onclick: () => { navigator.clipboard.writeText(document.getElementById('summary').value); alert('Скопійовано!') } }, "Скопіювати"),
-                button({ onclick: () => { navigator.share({ text: document.getElementById('summary').value }); } }, "Поділитися"),
-            ),
-        )
-
-    }
 </script>
 
-<div id="container">
+<div id="app">
 
 </div>
