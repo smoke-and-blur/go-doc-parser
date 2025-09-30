@@ -501,11 +501,28 @@
 
         return div(
             id`container`,
+            img(
+                style`width: 36px; height: 36px`,
+                src`https://upload.wikimedia.org/wikipedia/commons/8/8d/Emblem_of_the_State_Border_Guard_Service_of_Ukraine.svg`,
+            ),
             Table(fileSection),
             Matrix(out),
             Table(out2),
             Table(commentsSection),
             Table([div(id`summary`, style`grid-column: span 4;`, summary)]),
+            div(className`options`,
+                button("Скопіювати",
+                    onclick(e => {
+                        navigator.clipboard.writeText(document.getElementById('summary').innerText)
+                        alert('Скопійовано!')
+                    }, !notify)
+                ),
+                button("Поділитися",
+                    onclick(e => {
+                        navigator.share({ text: document.getElementById('summary').innerText })
+                    }, !notify)
+                ),
+            ),
         )
     }
 
