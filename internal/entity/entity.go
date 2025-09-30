@@ -1,24 +1,5 @@
 package entity
 
-type Group struct {
-	ID
-	Events []Event
-}
-
-type Page struct {
-	Filename            string
-	SelectedSupergroups [][]Group
-	OtherGroups         []Group
-}
-
-type Data struct {
-	Pages              []Page
-	AggregatedSelected []Group
-	AggregatedOther    []Group
-	AggregatedComments []Group
-	Summary            string
-}
-
 type ID struct {
 	ShortID
 	Hint string
@@ -36,6 +17,7 @@ type Event struct {
 }
 
 type Record struct {
+	Filename string
 	ID
 	Event
 }

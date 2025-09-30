@@ -3,27 +3,207 @@
 
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-<script src="erg0.js"></script>
+<script>
+    (function (global) {
+        class VNode {
+            constructor(tag, props = {}, children = []) {
+                this.tag = tag;
+                this.props = props;
+                this.children = children.flat();
+                this.el = null;
+            }
+
+            node() {
+                const el = document.createElement(this.tag);
+                this.el = el;
+
+                for (let [k, v] of Object.entries(this.props)) {
+                    if (k.startsWith("on") && typeof v === "function") {
+                        el[k.toLowerCase()] = v;
+                        continue;
+                    }
+                    if (k === "className") {
+                        el.setAttribute("class", v);
+                        continue;
+                    }
+                    if (v === true) {
+                        el.setAttribute(k, "");
+                        continue;
+                    }
+                    if (v !== false && v != null) {
+                        el[k] = v;
+                    }
+                }
+
+                for (let c of this.children) {
+                    if (c == null) continue;
+                    el.appendChild(c.node());
+                }
+
+                return el;
+            }
+        }
+
+        class TextVNode extends VNode {
+            constructor(text) {
+                super(null);
+                this.text = String(text);
+            }
+            node() {
+                this.el = document.createTextNode(this.text);
+                return this.el;
+            }
+        }
+
+        function patchChildren(parent, oldChildren, newChildren) {
+            const len = Math.max(oldChildren.length, newChildren.length);
+
+            for (let i = 0; i < len; i++) {
+                const oldC = oldChildren[i];
+                const newC = newChildren[i];
+
+                if (!oldC && newC) {
+                    parent.appendChild(newC.node());
+                    continue;
+                }
+
+                if (oldC && !newC) {
+                    parent.removeChild(oldC.el);
+                    continue;
+                }
+
+                if (oldC instanceof TextVNode && newC instanceof TextVNode) {
+                    if (oldC.text !== newC.text) {
+                        oldC.el.nodeValue = newC.text;
+                    }
+                    newC.el = oldC.el;
+                    continue;
+                }
+
+                if (oldC instanceof VNode && newC instanceof VNode) {
+                    patch(oldC, newC, parent);
+                }
+            }
+        }
+
+        function patch(oldVNode, newVNode, parent) {
+            if (oldVNode.tag !== newVNode.tag) {
+                parent.replaceChild(newVNode.node(), oldVNode.el);
+                return;
+            }
+
+            const el = (newVNode.el = oldVNode.el);
+
+            // remove old props
+            for (let k in oldVNode.props) {
+                if (!(k in newVNode.props)) {
+                    if (k.startsWith("on")) {
+                        el[k.toLowerCase()] = null;
+                    } else if (k === "className") {
+                        el.removeAttribute("class");
+                    } else {
+                        el.removeAttribute(k);
+                    }
+                }
+            }
+
+            // set new/changed props
+            for (let [k, v] of Object.entries(newVNode.props)) {
+                if (k.startsWith("on") && typeof v === "function") {
+                    if (oldVNode.props[k] !== v) {
+                        el[k.toLowerCase()] = v;
+                    }
+                    continue;
+                }
+
+                if (k === "className") {
+                    if (oldVNode.props[k] !== v) {
+                        el.setAttribute("class", v);
+                    }
+                    continue;
+                }
+
+                if (v === true) {
+                    el.setAttribute(k, "");
+                } else if (v === false || v == null) {
+                    el.removeAttribute(k);
+                } else if (oldVNode.props[k] !== v) {
+                    el[k] = v;
+                }
+            }
+
+            patchChildren(el, oldVNode.children, newVNode.children);
+        }
+
+        function render(component, parent) {
+            const newVNode = component();
+
+            if (!parent._vnode) {
+                parent._vnode = newVNode;
+                parent._component = component;
+                parent.appendChild(newVNode.node());
+                return;
+            }
+
+            patch(parent._vnode, newVNode, parent);
+            parent._vnode = newVNode;
+        }
+
+        function notify(parent = document.getElementById("app")) {
+            render(parent._component, parent);
+        }
+
+        const tags = new Proxy({}, {
+            get(_, name) {
+                return (...args) => {
+                    let props = {};
+                    let children = [];
+                    for (const a of args) {
+                        if (a == null) continue;
+                        if (
+                            typeof a === "object" &&
+                            !(a instanceof VNode) &&
+                            !(a instanceof Node) &&
+                            !Array.isArray(a)
+                        ) {
+                            props = { ...props, ...a };
+                            continue;
+                        }
+                        if (typeof a === "string" || typeof a === "number") {
+                            children.push(new TextVNode(a));
+                            continue;
+                        }
+                        children.push(a);
+                    }
+                    return new VNode(name, props, children);
+                };
+            }
+        });
+
+        const props = new Proxy({}, {
+            get(_, key) {
+                return (strings, ...values) => {
+                    if (strings.length === 1 && strings[0] === "" && values.length === 0) {
+                        return { [key]: true };
+                    }
+                    const value = String.raw({ raw: strings }, ...values);
+                    return { [key]: value };
+                };
+            }
+        });
+
+        const events = new Proxy({}, {
+            get(_, key) {
+                if (!key.startsWith("on")) throw new Error("Events must start with 'on'");
+                return (fn) => ({ [key]: (e) => { let r = fn(e); notify(); return r } });
+            }
+        });
+
+        global.erg0 = { VNode, TextVNode, tags, props, events, render, notify };
+    })(typeof window !== "undefined" ? window : globalThis);
+</script>
 
 <style>
-    table * {
-        border: 1px solid #888;
-    }
-
-    table,
-    td {
-        width: 100%;
-    }
-
-    table {
-        border-collapse: collapse;
-        border-spacing: 0;
-    }
-
-    th {
-        background: #eee;
-    }
-
     * {
         font-size: 16px;
         box-sizing: border-box;
@@ -103,7 +283,7 @@
     .table {
         align-content: start;
         display: grid;
-        grid-template-columns: max-content 5fr 5fr 1fr;
+        grid-template-columns: 1fr 5fr 3fr 1fr;
         gap: 6px;
         border: 1px solid #eee;
         border-radius: 12px;
@@ -114,122 +294,25 @@
         width: 24px;
         height: 24px;
     }
+
+    #summary {
+        font-style: italic;
+        white-space: pre-wrap;
+        overflow-wrap: break-word;
+        word-break: break-all;
+    }
 </style>
 
-<script src="https://d3js.org/d3.v7.min.js"></script>
-
 <script>
-
     const { render, notify, tags, props, events } = erg0
     const { p, div, pre, button, textarea, img, input, span } = tags
-    const { id, rows, value, type, className, style, src, draggable, checked } = props
+    const { id, rows, value, type, className, style, src, draggable, checked, title } = props
     const { onclick, onchange, ondragstart, ondragenter, ondragover, ondragleave, ondrop } = events
-
-    let data = {{.}}
-
-    data.Pages.sort((a, b) => a.Filename.localeCompare(b.Filename))
-
-    data.Pages[0].cutoff = 18
-
-    document.addEventListener(
-        "DOMContentLoaded",
-        function () {
-            const app = document.getElementById('app')
-
-            render(Data, app)
-        }
-    )
-
-    function Data() {
-        return div(id`container`,
-            img(
-                style`width: 36px; height: 36px`,
-                src`https://upload.wikimedia.org/wikipedia/commons/8/8d/Emblem_of_the_State_Border_Guard_Service_of_Ukraine.svg`,
-            ),
-            ...aggregate(),
-            textarea(
-                id`summary`,
-                rows`12`,
-                style`border-radius: 12px; border: 1px solid #eee; padding: 6px;`,
-                `summary`
-            ),
-            div(className`options`,
-                button("Скопіювати",
-                    onclick(e => {
-                        navigator.clipboard.writeText(document.getElementById('summary').value)
-                        alert('Скопійовано!')
-                    }, !notify)
-                ),
-                button("Поділитися",
-                    onclick(e => {
-                        navigator.share({ text: document.getElementById('summary').value })
-                    }, !notify)
-                ),
-            ),
-        )
-    }
-
-    function Header(page) {
-        return [
-            div(className`header`, page.Filename),
-            div(
-                className`options`,
-                style`gap: 4px`,
-                input(type`checkbox`, page.cutoff === 18 ? checked`` : null, onchange(e => page.cutoff = e.target.checked ? 18 : 0)),
-                p("18:00-00:00"),
-            ),
-        ]
-    }
-
-    function Group(page, group, sum) {
-        let out = []
-
-        const cells = [
-            { value: group.Type, span: 1 },
-            { value: group.Name, span: 1 },
-            { value: group.Hint, span: 1 },
-        ]
-
-        calculateSpans(cells)
-
-        for (const component of cells) {
-            component.value && out.push(
-                div(
-                    style`grid-column: span ${component.span};`,
-                    component.value,
-                )
-            )
-        }
-
-        out.push(div(className`number`, sum))
-
-        return out
-    }
-
-    function Divider(text) {
-        return div(className`divider`, text)
-    }
-
-    function Number(n) {
-        return div(
-            className`number`,
-            style`grid-column: span 4; font-weight:bold`,
-            n,
-        )
-    }
-
-    function Table(elements) {
-        return div(className`table`, ...elements)
-    }
-
-    function Matrix(elements) {
-        return div(className`matrix`, ...elements)
-    }
 
     class EasyMap extends Map {
         normalizeKey(key) {
             if (typeof key === "object" && key !== null) {
-                return JSON.stringify(key, Object.keys(key).sort()); // stable order
+                return JSON.stringify(key, Object.keys(key).sort());
             }
             return key;
         }
@@ -247,13 +330,273 @@
         getKey(key) {
             return this.get(this.normalizeKey(key));
         }
+
+        write(key, value) {
+            const k = this.normalizeKey(key)
+            this.set(k, value)
+        }
+    }
+
+    let data = {{.}}
+
+    const categories = new EasyMap();
+
+    categories.write({ Type: "впс", Name: "Кодима" }, "Кодима")
+    categories.write({ Type: "віпс", Name: "Загнітків" }, "Кодима")
+    categories.write({ Type: "віпс", Name: "Шершенці" }, "Кодима")
+    categories.write({ Type: "впс", Name: "Станіславка" }, "Станіславка")
+    categories.write({ Type: "віпс", Name: "Тимкове" }, "Станіславка")
+    categories.write({ Type: "віпс", Name: "Чорна" }, "Станіславка")
+    categories.write({ Type: "впс", Name: "Окни" }, "Окни")
+    categories.write({ Type: "віпс", Name: "Ткаченкове" }, "Окни")
+    categories.write({ Type: "віпс", Name: "Гулянка" }, "Окни")
+    categories.write({ Type: "віпс", Name: "Новосеменівка" }, "Окни")
+    categories.write({ Type: "впс", Name: "Великокомарівка" }, "Великокомарівка")
+    categories.write({ Type: "віпс", Name: "Павлівка" }, "Великокомарівка")
+    categories.write({ Type: "впс", Name: "Велика Михайлівка" }, "Велика Михайлівка")
+    categories.write({ Type: "віпс", Name: "Слов’яносербка" }, "Велика Михайлівка")
+    categories.write({ Type: "віпс", Name: "Гребеники" }, "Велика Михайлівка")
+    categories.write({ Type: "впс", Name: "Степанівка" }, "Степанівка")
+    categories.write({ Type: "віпс", Name: "Лучинське" }, "Степанівка")
+    categories.write({ Type: "віпс", Name: "Кучурган" }, "Степанівка")
+    categories.write({ Type: "віпс", Name: "Лиманське" }, "Степанівка")
+
+    const sortedFiles = [...new Set(data.map((event) => event.Filename))].sort()
+
+    const files = new Map(sortedFiles.map((filename, index) => [filename, index == 0 ? 18 : 0]))
+
+    document.addEventListener(
+        "DOMContentLoaded",
+        function () {
+            const app = document.getElementById('app')
+
+            render(App, app)
+        }
+    )
+
+    function App() {
+        const filtered = data.filter((e) => {
+            return e.End > files.get(e.Filename)
+        })
+
+        const known = new EasyMap();
+
+        const other = new EasyMap();
+
+        const comments = new EasyMap();
+
+        for (let event of filtered) {
+            let key = { Type: event.Type, Name: event.Name }
+
+            let target = known
+
+            let category = categories.getKey(key)
+
+            if (!category) {
+                target = other
+                key.Hint = event.Hint
+            }
+
+            target.push(key, [{ End: event.End, Comment: event.Comment }])
+            event.Comment && comments.push(key, [{ Comment: event.Comment }])
+        }
+
+        let groups = new EasyMap();
+
+        categories.forEach((category, key) => {
+            let events = known.getKey(key)
+            const sum = events ? events.length : 0
+            groups.push(category, [{ ...JSON.parse(key), sum }])
+        })
+
+        let out = []
+
+        groups.forEach((rows, category) => {
+            let processed = rows.map((r) => Row(r))
+
+            out.push(Table([Divider(category), ...processed]))
+        })
+
+        let out2 = [Divider("Інші")]
+
+        other.forEach((rows, key) => {
+            out2.push(Row({ ...JSON.parse(key), sum: rows.length }))
+        })
+
+        // sort???
+        let fileSection = [Divider("Файли")]
+
+        // allow disabled
+
+        files.forEach((cutoff, filename) => {
+            fileSection.push(
+                div(style`grid-column: span 2; overflow-wrap: break-word;`, filename),
+                input(
+                    type`checkbox`,
+                    cutoff === 18 ? checked`` : null,
+                    onchange(e => files.set(filename, cutoff === 18 ? 0 : 18))
+                ),
+                div(className`number`, cutoff),
+            )
+        })
+
+        const cases = new EasyMap();
+
+        let commentsSection = []
+
+        comments.forEach((events, key) => {
+            let currentCases = 0
+            let totalNumbers = 0
+
+            let c = events.map((event) => {
+                let numbers = 0
+                let tokens = tokenize(event.Comment)
+                for (let token of tokens) {
+                    if (token.type === "text") {
+                        continue
+                    }
+
+                    numbers += Number(token.number)
+                }
+
+                totalNumbers += numbers
+                numbers > 0 && currentCases++
+
+                return tokens.map(t => t.type === "text" ? t.value : Action(t.value))
+            })
+
+            let cat = categories.get(key)
+
+            // TODO: cat???
+            currentCases > 0 && cases.set(cat, { currentCases, totalNumbers })
+
+            k = JSON.parse(key)
+            commentsSection.push(Divider([k.Type, k.Name, k.Hint, `(${cat})`].filter(Boolean).join(" ")))
+            commentsSection.push(c.map(tokenized => div(style`grid-column: span 4`, ...tokenized)))
+        })
+
+        let summary = ""
+
+        let i = 0
+
+        let casesText = Plural("випадку", "випадках", "випадках")
+        let numbersText = Plural("порушення", "порушення", "порушень")
+        let flightsText = Plural("політ", "польоти", "польотів")
+
+        groups.forEach((group, key) => {
+            i++
+
+            let total = group.reduce((total, group) => { return total + group.sum }, 0)
+
+            summary += `${i}. ${key} - ${flightsText(total)}`
+
+            let currentCases = cases.get(key)
+            if (currentCases) {
+                summary += `, в ${casesText(currentCases.currentCases)} - ${numbersText(currentCases.totalNumbers)};`
+            } else {
+                summary += `, ОПДК не виявлено;`
+            }
+            summary += "\n"
+        })
+
+        return div(
+            id`container`,
+            Table(fileSection),
+            Matrix(out),
+            Table(out2),
+            Table(commentsSection),
+            Table([div(id`summary`, style`grid-column: span 4;`, summary)]),
+        )
     }
 
     function Action() {
-        return div(
-            style`cursor:pointer; display: inline-block; background: #eee; border: 1px solid #ddd; padding: 0 6px; border-radius: 8px;`,
+        return span(
+            style`cursor:pointer; font-weight: bold; background: #eee; border: 1px solid #ddd; padding: 0 6px; border-radius: 8px;`,
             ...arguments,
         )
+    }
+
+    function Row(row) {
+        let out = []
+
+        const cells = [
+            { value: row.Type, span: 1 },
+            { value: row.Name, span: 1 },
+            { value: row.Hint, span: 1 },
+        ]
+
+        calculateSpans(cells)
+
+        for (const component of cells) {
+            component.value && out.push(
+                div(
+                    style`grid-column: span ${component.span};`,
+                    title`${row.Hint}`,
+                    component.value,
+                )
+            )
+        }
+
+        out.push(div(className`number`, row.sum))
+
+        return out
+    }
+
+    function Divider(text) {
+        return div(className`divider`, text)
+    }
+
+    function NumberCell(n) {
+        return div(
+            className`number`,
+            style`grid-column: span 4; font-weight:bold`,
+            n,
+        )
+    }
+
+    function Table(elements) {
+        return div(className`table`, ...elements)
+    }
+
+    function Matrix(elements) {
+        return div(className`matrix`, ...elements)
+    }
+
+    function calculateSpans(items) {
+        let last = -1
+        let span = 0
+
+        for (let i = 0; i < items.length + 1; i++) {
+            if (items[last] && items[last].value) {
+                items[last].span += span
+                span = 0
+            }
+
+            if (items[i] && items[i].value) {
+                last = i
+                continue
+            }
+
+
+            span++
+        }
+    }
+
+    function Plural(one, few, many) {
+        return function (n) {
+            const mod10 = n % 10;
+            const mod100 = n % 100;
+
+            let out = many;
+
+            if (mod10 === 1 && mod100 !== 11) {
+                out = one;
+            } else if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) {
+                out = few;
+            }
+
+            return `${n} ${out}`;
+        };
     }
 
     function tokenize(str) {
@@ -282,132 +625,8 @@
             tokens.push({ type: "text", value: str.slice(lastIndex) });
         }
 
-        return tokens.map(t => t.type === "text" ? t.value : span(style`background:#eaa;border: 1px solid #d33; border-radius: 6px; padding: 0 6px`, t.value))
+        return tokens
     }
-
-    function Comment(key, comments) {
-        key = JSON.parse(key)
-        return [
-            Divider([key.Type, key.Name, key.Hint].filter(Boolean).join(" • ")),
-            ...comments.map(
-                comment => div(
-                    style`grid-column: span 4; white-space: pre; text-wrap: wrap; overflow-wrap: break-word;`,
-                    ...tokenize(comment.Comment),
-                    Action("→0", onclick(e => console.log(e.target))),
-                ),
-            ),
-        ]
-    }
-
-    function aggregate() {
-        aggregateSelected = new EasyMap();
-        aggregateOther = new EasyMap();
-        aggregateComments = new EasyMap();
-
-        let out = []
-
-        for (const page of data.Pages) {
-            page.cutoff ??= 0
-
-            out.push(...Header(page))
-
-            var total = 0
-
-            toplevel = []
-
-            for (const selectedSupergroup of page.SelectedSupergroups) {
-                items = [Divider(selectedSupergroup[0].Name)]
-
-                let total = 0
-
-                for (const group of selectedSupergroup) {
-                    // count function to reuse???
-                    let filtered = group.Events.filter(e => e.End >= page.cutoff)
-
-                    let key = { Name: selectedSupergroup[0].Name }
-
-                    aggregateSelected.push(key, filtered)
-
-                    // TODO: single reduce call aggregating events+comments???
-                    let comments = filtered.filter(e => e.Comment);
-
-                    comments.length > 0 && aggregateComments.push(key, comments)
-
-                    let sum = filtered.length
-
-                    total += sum
-
-                    items.push(...Group(page, group, sum))
-                }
-
-                items.push(Number(total))
-
-
-                toplevel.push(Table(items))
-            }
-
-            toplevel = [Matrix(toplevel)]
-
-            other = [Divider("Інші")]
-
-            for (const group of page.OtherGroups) {
-                let k = { Type: group.Type, Name: group.Name, Hint: group.Hint }
-
-                let filtered = group.Events.filter(e => e.End >= page.cutoff)
-
-                aggregateOther.push(k, filtered)
-
-                let comments = filtered.filter(e => e.Comment);
-
-                comments.length > 0 && aggregateComments.push(k, comments)
-
-                other.push(...Group(page, group, filtered.length))
-            }
-
-            toplevel.push(Table(other))
-
-            out.push(toplevel)
-        }
-
-        out.push(div(className`header`, "Підсумок"))
-
-        selected = [Divider("Сума за всі документи")]
-
-        aggregateSelected.forEach((events, k) => {
-            selected.push(...Group({ cutoff: 0 }, { Name: JSON.parse(k).Name }, events.length))
-        })
-
-        out.push(Table(selected))
-
-        out.push(div(className`header`, "Примітки"))
-
-        aggregateComments.forEach((c, key) => {
-            out.push(Table(Comment(key, c)))
-        })
-
-        return out
-    }
-
-    function calculateSpans(items) {
-        let last = -1
-        let span = 0
-
-        for (let i = 0; i < items.length + 1; i++) {
-            if (items[last] && items[last].value) {
-                items[last].span += span
-                span = 0
-            }
-
-            if (items[i] && items[i].value) {
-                last = i
-                continue
-            }
-
-            // only count spans if there is an empty cell
-            span++
-        }
-    }
-
 </script>
 
 <div id="app">

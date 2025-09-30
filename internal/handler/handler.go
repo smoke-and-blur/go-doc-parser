@@ -10,7 +10,7 @@ import (
 	"net/http"
 )
 
-func Handler(process func([]*zip.File) entity.Data) func(w http.ResponseWriter, r *http.Request) {
+func Handler(process func([]*zip.File) []entity.Record) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "https://js-doc-parser.onrender.com")
 		w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS")

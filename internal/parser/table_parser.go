@@ -62,9 +62,10 @@ func ParseTable(tag string, table *docx.Table) (out []entity.Record) {
 		}
 
 		record := entity.Record{
+			Filename: tag,
 			ID: entity.ID{
-				shortID,
-				hint,
+				ShortID: shortID,
+				Hint:    hint,
 			},
 			Event: entity.Event{
 				Start:   0,
