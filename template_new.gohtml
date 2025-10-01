@@ -94,7 +94,7 @@
 
             const el = (newVNode.el = oldVNode.el);
 
-            // remove old props
+
             for (let k in oldVNode.props) {
                 if (!(k in newVNode.props)) {
                     if (k.startsWith("on")) {
@@ -107,7 +107,7 @@
                 }
             }
 
-            // set new/changed props
+
             for (let [k, v] of Object.entries(newVNode.props)) {
                 if (k.startsWith("on") && typeof v === "function") {
                     if (oldVNode.props[k] !== v) {
@@ -195,7 +195,13 @@
         const events = new Proxy({}, {
             get(_, key) {
                 if (!key.startsWith("on")) throw new Error("Events must start with 'on'");
-                return (fn) => ({ [key]: (e) => { let r = fn(e); notify(); return r } });
+                return (fn, doNotify = true) => ({
+                    [key]: (e) => {
+                        let r = fn(e);
+                        if (doNotify) notify();
+                        return r;
+                    }
+                });
             }
         });
 
@@ -208,17 +214,20 @@
         font-size: 16px;
         box-sizing: border-box;
         margin: 0;
+        text-overflow: clip;
+        overflow-wrap: break-word;
+        word-break: break-all;
     }
 
     .divider {
         padding: 3px;
-        grid-column: span 4;
         border-radius: 6px;
-        background: #eee;
+        background: #ddd;
         text-align: center;
-        color: #666;
+        color: #333;
         font-weight: bold;
     }
+
 
     #container {
         display: flex;
@@ -247,7 +256,9 @@
     }
 
     .number {
-        text-align: right;
+        /* text-align: right; */
+        /* align-self: flex-end; */
+        margin-left: auto;
     }
 
     .header {
@@ -269,7 +280,7 @@
     }
 
     button {
-        border-radius: 6px;
+        border-radius: 12px;
         border: 1px solid #eee;
         background: none;
         padding: 6px;
@@ -281,9 +292,8 @@
     }
 
     .table {
-        align-content: start;
-        display: grid;
-        grid-template-columns: 1fr 5fr 3fr 1fr;
+        display: flex;
+        flex-direction: column;
         gap: 6px;
         border: 1px solid #eee;
         border-radius: 12px;
@@ -291,15 +301,38 @@
     }
 
     input[type="checkbox"] {
-        width: 24px;
-        height: 24px;
+        width: 16px;
+        height: 16px;
     }
 
     #summary {
         font-style: italic;
         white-space: pre-wrap;
-        overflow-wrap: break-word;
-        word-break: break-all;
+    }
+
+    .table-row {
+        align-content: start;
+        display: grid;
+        grid-template-columns: 4ch 1fr 3ch;
+        /* gap: 6px; */
+        border-radius: 6px;
+        padding: 0 3px;
+        align-items: center;
+    }
+
+    .row {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        gap: 3px;
+        border-radius: 6px;
+        padding: 0 3px;
+
+        word-wrap: wrap;
+    }
+
+    .row:hover {
+        background-color: #eee;
     }
 </style>
 
@@ -393,8 +426,12 @@
             let category = categories.getKey(key)
 
             if (!category) {
-                target = other
                 key.Hint = event.Hint
+            }
+
+            category = categories.getKey(key)
+            if (!category) {
+                target = other
             }
 
             target.push(key, [{ End: event.End, Comment: event.Comment }])
@@ -409,34 +446,53 @@
             groups.push(category, [{ ...JSON.parse(key), sum }])
         })
 
-        let out = []
+        let groupSection = []
 
-        groups.forEach((rows, category) => {
-            let processed = rows.map((r) => Row(r))
+        groups.forEach((group, category) => {
+            let processed = group.map((r) => TableRow(r))
 
-            out.push(Table([Divider(category), ...processed]))
+            let total = group.reduce((total, group) => { return total + group.sum }, 0)
+
+            groupSection.push(
+                Table([
+                    ondragover(e => {
+                        e.preventDefault()
+                        if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+                    }, !notify),
+                    ondragenter(e => e.preventDefault(), !notify),
+                    ondragleave(e => e.preventDefault(), !notify),
+                    ondrop(e => {
+                        e.preventDefault()
+                        let key = JSON.parse(e.dataTransfer.getData("text/plain"))
+                        categories.write(key, category)
+                    }),
+                    Divider(`${category} (${total})`),
+                    ...processed,
+                ])
+            )
         })
 
-        let out2 = [Divider("Інші")]
+        let otherSection = [Divider("Інші")]
 
         other.forEach((rows, key) => {
-            out2.push(Row({ ...JSON.parse(key), sum: rows.length }))
+            otherSection.push(DraggableRow({ ...JSON.parse(key), sum: rows.length }))
         })
 
-        // sort???
         let fileSection = [Divider("Файли")]
 
         // allow disabled
 
         files.forEach((cutoff, filename) => {
             fileSection.push(
-                div(style`grid-column: span 2; overflow-wrap: break-word;`, filename),
-                input(
-                    type`checkbox`,
-                    cutoff === 18 ? checked`` : null,
-                    onchange(e => files.set(filename, cutoff === 18 ? 0 : 18))
+                div(className`row`,
+                    input(
+                        type`checkbox`,
+                        cutoff === 18 ? checked`` : null,
+                        onchange(e => files.set(filename, cutoff === 18 ? 0 : 18))
+                    ),
+                    div(filename),
+                    div(className`number`, cutoff),
                 ),
-                div(className`number`, cutoff),
             )
         })
 
@@ -472,7 +528,7 @@
 
             k = JSON.parse(key)
             commentsSection.push(Divider([k.Type, k.Name, k.Hint, `(${cat})`].filter(Boolean).join(" ")))
-            commentsSection.push(c.map(tokenized => div(style`grid-column: span 4`, ...tokenized)))
+            commentsSection.push(c.map(tokenized => div(style`padding: 0 3px`, ...tokenized)))
         })
 
         let summary = ""
@@ -506,10 +562,10 @@
                 src`https://upload.wikimedia.org/wikipedia/commons/8/8d/Emblem_of_the_State_Border_Guard_Service_of_Ukraine.svg`,
             ),
             Table(fileSection),
-            Matrix(out),
-            Table(out2),
+            Matrix(groupSection),
+            Table(otherSection),
             Table(commentsSection),
-            Table([div(id`summary`, style`grid-column: span 4;`, summary)]),
+            Table([div(id`summary`, summary)]),
             div(className`options`,
                 button("Скопіювати",
                     onclick(e => {
@@ -533,13 +589,12 @@
         )
     }
 
-    function Row(row) {
+    function TableRow(row) {
         let out = []
 
         const cells = [
             { value: row.Type, span: 1 },
             { value: row.Name, span: 1 },
-            { value: row.Hint, span: 1 },
         ]
 
         calculateSpans(cells)
@@ -548,7 +603,6 @@
             component.value && out.push(
                 div(
                     style`grid-column: span ${component.span};`,
-                    title`${row.Hint}`,
                     component.value,
                 )
             )
@@ -556,7 +610,38 @@
 
         out.push(div(className`number`, row.sum))
 
-        return out
+        return div(className`table-row`, ...out)
+    }
+
+    function Row(row) {
+        let out = [row.Type, row.Name, row.Hint].filter(Boolean).map(c => div(c))
+
+        out.push(div(className`number`, row.sum))
+
+        return div(
+            className`row`,
+            ...out,
+        )
+    }
+
+    function DraggableRow(row) {
+        let out = [row.Type, row.Name, row.Hint].filter(Boolean).map(c => div(c))
+
+        out.push(div(
+            className`number`,
+            row.sum,
+        ))
+
+        return div(
+            className`row`,
+            draggable`true`,
+            ondragstart(e => {
+                let key = JSON.stringify({ Type: row.Type, Name: row.Name, Hint: row.Hint })
+                e.dataTransfer.setData("text/plain", key)
+                e.dataTransfer.effectAllowed = "move"
+            }, !notify),
+            ...out,
+        )
     }
 
     function Divider(text) {
@@ -566,7 +651,7 @@
     function NumberCell(n) {
         return div(
             className`number`,
-            style`grid-column: span 4; font-weight:bold`,
+            style`grid-column: span 3; font-weight:bold`,
             n,
         )
     }
