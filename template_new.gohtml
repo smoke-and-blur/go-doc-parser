@@ -226,8 +226,14 @@
         text-align: center;
         color: #333;
         font-weight: bold;
-    }
+        user-select: none;
 
+        display: flex;
+        gap: 3px;
+        flex-direction: row;
+        justify-content: center;
+        align-items: center;
+    }
 
     #container {
         display: flex;
@@ -300,11 +306,6 @@
         padding: 6px;
     }
 
-    input[type="checkbox"] {
-        width: 16px;
-        height: 16px;
-    }
-
     #summary {
         font-style: italic;
         white-space: pre-wrap;
@@ -331,6 +332,15 @@
         word-wrap: wrap;
     }
 
+    .action-row {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        gap: 3px;
+        border-radius: 6px;
+        word-wrap: wrap;
+    }
+
     .row:hover {
         background-color: #eee;
     }
@@ -338,7 +348,7 @@
 
 <script>
     const { render, notify, tags, props, events } = erg0
-    const { p, div, pre, button, textarea, img, input, span } = tags
+    const { p, div, pre, button, textarea, img, span } = tags
     const { id, rows, value, type, className, style, src, draggable, checked, title } = props
     const { onclick, onchange, ondragstart, ondragenter, ondragover, ondragleave, ondrop } = events
 
@@ -368,6 +378,17 @@
             const k = this.normalizeKey(key)
             this.set(k, value)
         }
+
+        remove(key) {
+            const k = this.normalizeKey(key)
+            this.delete(k)
+        }
+
+        toggle(key) {
+            const k = this.normalizeKey(key)
+            let v = this.get(k)
+            this.set(k, !v)
+        }
     }
 
     let data = {{.}}
@@ -394,9 +415,11 @@
     categories.write({ Type: "віпс", Name: "Кучурган" }, "Степанівка")
     categories.write({ Type: "віпс", Name: "Лиманське" }, "Степанівка")
 
+    const custom = new EasyMap();
+
     const sortedFiles = [...new Set(data.map((event) => event.Filename))].sort()
 
-    const files = new Map(sortedFiles.map((filename, index) => [filename, index == 0 ? 18 : 0]))
+    const files = new Map(sortedFiles.map((filename, index) => [filename, { cutoff: index == 0 ? 18 : 0, enabled: true }]))
 
     document.addEventListener(
         "DOMContentLoaded",
@@ -409,7 +432,7 @@
 
     function App() {
         const filtered = data.filter((e) => {
-            return e.End > files.get(e.Filename)
+            return files.get(e.Filename).enabled && e.End > files.get(e.Filename).cutoff
         })
 
         const known = new EasyMap();
@@ -427,11 +450,10 @@
 
             if (!category) {
                 key.Hint = event.Hint
-            }
-
-            category = categories.getKey(key)
-            if (!category) {
-                target = other
+                category = custom.getKey(key)
+                if (!category) {
+                    target = other
+                }
             }
 
             target.push(key, [{ End: event.End, Comment: event.Comment }])
@@ -446,10 +468,23 @@
             groups.push(category, [{ ...JSON.parse(key), sum }])
         })
 
+        custom.forEach((category, key) => {
+            let events = known.getKey(key)
+            const sum = events ? events.length : 0
+            const k = JSON.parse(key)
+            k.Custom = true
+            groups.push(category, [{ ...k, sum }])
+        })
+
         let groupSection = []
 
         groups.forEach((group, category) => {
-            let processed = group.map((r) => TableRow(r))
+            let processed = group.map((r) => {
+                if (r.Custom) {
+                    return DraggableRow(r)
+                }
+                return TableRow(r)
+            })
 
             let total = group.reduce((total, group) => { return total + group.sum }, 0)
 
@@ -464,7 +499,7 @@
                     ondrop(e => {
                         e.preventDefault()
                         let key = JSON.parse(e.dataTransfer.getData("text/plain"))
-                        categories.write(key, category)
+                        custom.write(key, category)
                     }),
                     Divider(`${category} (${total})`),
                     ...processed,
@@ -472,26 +507,51 @@
             )
         })
 
-        let otherSection = [Divider("Інші")]
+        let otherSection = [
+            ondragover(e => {
+                e.preventDefault()
+                if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+            }, !notify),
+            ondrop(e => {
+                e.preventDefault()
+                let key = JSON.parse(e.dataTransfer.getData("text/plain"))
+                custom.remove(key)
+            }),
+            Divider("Інші"),
+        ]
 
         other.forEach((rows, key) => {
             otherSection.push(DraggableRow({ ...JSON.parse(key), sum: rows.length }))
         })
 
-        let fileSection = [Divider("Файли")]
+        let fileSection = [Divider(
+            "Файли",
+            Action(true, "перемкнути активні"),
+            onclick(e => {
+                files.forEach((file, filename) => {
+                    file.enabled = !file.enabled
+                    files.set(filename, file)
+                })
+            })
+        )]
 
         // allow disabled
 
-        files.forEach((cutoff, filename) => {
+        files.forEach((file, filename) => {
+            const { cutoff, enabled } = file
             fileSection.push(
-                div(className`row`,
-                    input(
-                        type`checkbox`,
-                        cutoff === 18 ? checked`` : null,
-                        onchange(e => files.set(filename, cutoff === 18 ? 0 : 18))
+                div(className`action-row`,
+                    Action(
+                        enabled,
+                        filename,
+                        onclick(e => files.set(filename, { cutoff, enabled: !enabled })),
                     ),
-                    div(filename),
-                    div(className`number`, cutoff),
+                    Action(
+                        true,
+                        className`number`,
+                        cutoff > 0 ? "18:00-00:00" : "00:00-00:00",
+                        onclick(e => files.set(filename, { cutoff: cutoff === 18 ? 0 : 18, enabled }))
+                    ),
                 ),
             )
         })
@@ -518,7 +578,7 @@
                 totalNumbers += numbers
                 numbers > 0 && currentCases++
 
-                return tokens.map(t => t.type === "text" ? t.value : Action(t.value))
+                return tokens.map(t => t.type === "text" ? t.value : Action(true, t.value))
             })
 
             let cat = categories.get(key)
@@ -582,10 +642,10 @@
         )
     }
 
-    function Action() {
+    function Action(enabled, ...elements) {
         return span(
-            style`cursor:pointer; font-weight: bold; background: #eee; border: 1px solid #ddd; padding: 0 6px; border-radius: 8px;`,
-            ...arguments,
+            style`${enabled ? "" : "text-decoration: line-through;"} cursor:pointer; font-weight: bold; background: #eee; border: 1px solid #ccc; padding: 0 6px; border-radius: 8px;`,
+            ...elements,
         )
     }
 
@@ -644,8 +704,8 @@
         )
     }
 
-    function Divider(text) {
-        return div(className`divider`, text)
+    function Divider(text, ...elements) {
+        return div(className`divider`, text, ...elements)
     }
 
     function NumberCell(n) {
