@@ -583,7 +583,14 @@
 
             let cat = categories.get(key)
 
-            // TODO: cat???
+            if (!cat) {
+                cat = custom.get(key)
+            }
+
+            if (!cat) {
+                cat = "невизначено"
+            }
+
             currentCases > 0 && cases.set(cat, { currentCases, totalNumbers })
 
             k = JSON.parse(key)
