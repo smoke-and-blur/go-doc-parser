@@ -3,211 +3,7 @@
 
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-<script>
-    (function (global) {
-        class VNode {
-            constructor(tag, props = {}, children = []) {
-                this.tag = tag;
-                this.props = props;
-                this.children = children.flat();
-                this.el = null;
-            }
-
-            node() {
-                const el = document.createElement(this.tag);
-                this.el = el;
-
-                for (let [k, v] of Object.entries(this.props)) {
-                    if (k.startsWith("on") && typeof v === "function") {
-                        el[k.toLowerCase()] = v;
-                        continue;
-                    }
-                    if (k === "className") {
-                        el.setAttribute("class", v);
-                        continue;
-                    }
-                    if (v === true) {
-                        el.setAttribute(k, "");
-                        continue;
-                    }
-                    if (v !== false && v != null) {
-                        el[k] = v;
-                    }
-                }
-
-                for (let c of this.children) {
-                    if (c == null) continue;
-                    el.appendChild(c.node());
-                }
-
-                return el;
-            }
-        }
-
-        class TextVNode extends VNode {
-            constructor(text) {
-                super(null);
-                this.text = String(text);
-            }
-            node() {
-                this.el = document.createTextNode(this.text);
-                return this.el;
-            }
-        }
-
-        function patchChildren(parent, oldChildren, newChildren) {
-            const len = Math.max(oldChildren.length, newChildren.length);
-
-            for (let i = 0; i < len; i++) {
-                const oldC = oldChildren[i];
-                const newC = newChildren[i];
-
-                if (!oldC && newC) {
-                    parent.appendChild(newC.node());
-                    continue;
-                }
-
-                if (oldC && !newC) {
-                    parent.removeChild(oldC.el);
-                    continue;
-                }
-
-                if (oldC instanceof TextVNode && newC instanceof TextVNode) {
-                    if (oldC.text !== newC.text) {
-                        oldC.el.nodeValue = newC.text;
-                    }
-                    newC.el = oldC.el;
-                    continue;
-                }
-
-                if (oldC instanceof VNode && newC instanceof VNode) {
-                    patch(oldC, newC, parent);
-                }
-            }
-        }
-
-        function patch(oldVNode, newVNode, parent) {
-            if (oldVNode.tag !== newVNode.tag) {
-                parent.replaceChild(newVNode.node(), oldVNode.el);
-                return;
-            }
-
-            const el = (newVNode.el = oldVNode.el);
-
-
-            for (let k in oldVNode.props) {
-                if (!(k in newVNode.props)) {
-                    if (k.startsWith("on")) {
-                        el[k.toLowerCase()] = null;
-                    } else if (k === "className") {
-                        el.removeAttribute("class");
-                    } else {
-                        el.removeAttribute(k);
-                    }
-                }
-            }
-
-
-            for (let [k, v] of Object.entries(newVNode.props)) {
-                if (k.startsWith("on") && typeof v === "function") {
-                    if (oldVNode.props[k] !== v) {
-                        el[k.toLowerCase()] = v;
-                    }
-                    continue;
-                }
-
-                if (k === "className") {
-                    if (oldVNode.props[k] !== v) {
-                        el.setAttribute("class", v);
-                    }
-                    continue;
-                }
-
-                if (v === true) {
-                    el.setAttribute(k, "");
-                } else if (v === false || v == null) {
-                    el.removeAttribute(k);
-                } else if (oldVNode.props[k] !== v) {
-                    el[k] = v;
-                }
-            }
-
-            patchChildren(el, oldVNode.children, newVNode.children);
-        }
-
-        function render(component, parent) {
-            const newVNode = component();
-
-            if (!parent._vnode) {
-                parent._vnode = newVNode;
-                parent._component = component;
-                parent.appendChild(newVNode.node());
-                return;
-            }
-
-            patch(parent._vnode, newVNode, parent);
-            parent._vnode = newVNode;
-        }
-
-        function notify(parent = document.getElementById("app")) {
-            render(parent._component, parent);
-        }
-
-        const tags = new Proxy({}, {
-            get(_, name) {
-                return (...args) => {
-                    let props = {};
-                    let children = [];
-                    for (const a of args) {
-                        if (a == null) continue;
-                        if (
-                            typeof a === "object" &&
-                            !(a instanceof VNode) &&
-                            !(a instanceof Node) &&
-                            !Array.isArray(a)
-                        ) {
-                            props = { ...props, ...a };
-                            continue;
-                        }
-                        if (typeof a === "string" || typeof a === "number") {
-                            children.push(new TextVNode(a));
-                            continue;
-                        }
-                        children.push(a);
-                    }
-                    return new VNode(name, props, children);
-                };
-            }
-        });
-
-        const props = new Proxy({}, {
-            get(_, key) {
-                return (strings, ...values) => {
-                    if (strings.length === 1 && strings[0] === "" && values.length === 0) {
-                        return { [key]: true };
-                    }
-                    const value = String.raw({ raw: strings }, ...values);
-                    return { [key]: value };
-                };
-            }
-        });
-
-        const events = new Proxy({}, {
-            get(_, key) {
-                if (!key.startsWith("on")) throw new Error("Events must start with 'on'");
-                return (fn, doNotify = true) => ({
-                    [key]: (e) => {
-                        let r = fn(e);
-                        if (doNotify) notify();
-                        return r;
-                    }
-                });
-            }
-        });
-
-        global.erg0 = { VNode, TextVNode, tags, props, events, render, notify };
-    })(typeof window !== "undefined" ? window : globalThis);
-</script>
+<script src="https://github.com/smoke-and-blur/erg0/releases/download/v1.1.0/erg0.min.js"></script>
 
 <style>
     * {
@@ -347,10 +143,10 @@
 </style>
 
 <script>
-    const { render, notify, tags, props, events } = erg0
+    const { render, tags, attrs, handlers } = erg0;
     const { p, div, pre, button, textarea, img, span } = tags
-    const { id, rows, value, type, className, style, src, draggable, checked, title } = props
-    const { onclick, onchange, ondragstart, ondragenter, ondragover, ondragleave, ondrop } = events
+    const { id, rows, value, type, class: c, style, src, draggable, checked, title } = attrs
+    const { onclick, onchange, ondragstart, ondragenter, ondragover, ondragleave, ondrop } = handlers
 
     class EasyMap extends Map {
         normalizeKey(key) {
@@ -426,7 +222,7 @@
         function () {
             const app = document.getElementById('app')
 
-            render(App, app)
+            render(app, App)
         }
     )
 
@@ -493,9 +289,9 @@
                     ondragover(e => {
                         e.preventDefault()
                         if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
-                    }, !notify),
-                    ondragenter(e => e.preventDefault(), !notify),
-                    ondragleave(e => e.preventDefault(), !notify),
+                    }, false),
+                    ondragenter(e => e.preventDefault(), false),
+                    ondragleave(e => e.preventDefault(), false),
                     ondrop(e => {
                         e.preventDefault()
                         let key = JSON.parse(e.dataTransfer.getData("text/plain"))
@@ -511,7 +307,7 @@
             ondragover(e => {
                 e.preventDefault()
                 if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
-            }, !notify),
+            }, false),
             ondrop(e => {
                 e.preventDefault()
                 let key = JSON.parse(e.dataTransfer.getData("text/plain"))
@@ -540,7 +336,7 @@
         files.forEach((file, filename) => {
             const { cutoff, enabled } = file
             fileSection.push(
-                div(className`action-row`,
+                div(c`action-row`,
                     Action(
                         enabled,
                         filename,
@@ -548,7 +344,7 @@
                     ),
                     Action(
                         true,
-                        className`number`,
+                        c`number`,
                         cutoff > 0 ? "18:00-00:00" : "00:00-00:00",
                         onclick(e => files.set(filename, { cutoff: cutoff === 18 ? 0 : 18, enabled }))
                     ),
@@ -598,7 +394,7 @@
             commentsSection.push(c.map(tokenized => div(style`padding: 0 3px`, ...tokenized)))
         })
 
-        let summary = ""
+        let summary = `Всього польотів: ${filtered.length}` + "\n"
 
         let i = 0
 
@@ -633,17 +429,17 @@
             Table(otherSection),
             Table(commentsSection),
             Table([div(id`summary`, summary)]),
-            div(className`options`,
+            div(c`options`,
                 button("Скопіювати",
                     onclick(e => {
                         navigator.clipboard.writeText(document.getElementById('summary').innerText)
                         alert('Скопійовано!')
-                    }, !notify)
+                    }, false)
                 ),
                 button("Поділитися",
                     onclick(e => {
                         navigator.share({ text: document.getElementById('summary').innerText })
-                    }, !notify)
+                    }, false)
                 ),
             ),
         )
@@ -675,18 +471,18 @@
             )
         }
 
-        out.push(div(className`number`, row.sum))
+        out.push(div(c`number`, row.sum))
 
-        return div(className`table-row`, ...out)
+        return div(c`table-row`, ...out)
     }
 
     function Row(row) {
         let out = [row.Type, row.Name, row.Hint].filter(Boolean).map(c => div(c))
 
-        out.push(div(className`number`, row.sum))
+        out.push(div(c`number`, row.sum))
 
         return div(
-            className`row`,
+            c`row`,
             ...out,
         )
     }
@@ -695,40 +491,40 @@
         let out = [row.Type, row.Name, row.Hint].filter(Boolean).map(c => div(c))
 
         out.push(div(
-            className`number`,
+            c`number`,
             row.sum,
         ))
 
         return div(
-            className`row`,
+            c`row`,
             draggable`true`,
             ondragstart(e => {
                 let key = JSON.stringify({ Type: row.Type, Name: row.Name, Hint: row.Hint })
                 e.dataTransfer.setData("text/plain", key)
                 e.dataTransfer.effectAllowed = "move"
-            }, !notify),
+            }, false),
             ...out,
         )
     }
 
     function Divider(text, ...elements) {
-        return div(className`divider`, text, ...elements)
+        return div(c`divider`, text, ...elements)
     }
 
     function NumberCell(n) {
         return div(
-            className`number`,
+            c`number`,
             style`grid-column: span 3; font-weight:bold`,
             n,
         )
     }
 
     function Table(elements) {
-        return div(className`table`, ...elements)
+        return div(c`table`, ...elements)
     }
 
     function Matrix(elements) {
-        return div(className`matrix`, ...elements)
+        return div(c`matrix`, ...elements)
     }
 
     function calculateSpans(items) {
