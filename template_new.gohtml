@@ -228,7 +228,7 @@
 
     function App() {
         const filtered = data.filter((e) => {
-            return files.get(e.Filename).enabled && e.End > files.get(e.Filename).cutoff
+            return files.get(e.Filename).enabled && e.End >= files.get(e.Filename).cutoff
         })
 
         const known = new EasyMap();
